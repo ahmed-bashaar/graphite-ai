@@ -14,6 +14,11 @@ const DEFAULT_NAMES: Record<DiagramType, string> = {
   mermaid: 'Diagram',
 }
 
+/** Human-readable name of a stored diagram type ("Class diagram", ...). */
+export function diagramTypeLabel(type: string): string {
+  return Object.hasOwn(DEFAULT_NAMES, type) ? DEFAULT_NAMES[type as DiagramType] : DEFAULT_NAMES.mermaid
+}
+
 const OPENING_FENCE = /^ {0,3}```\s*([\w+-]*)\s*$/
 const CLOSING_FENCE = /^ {0,3}```\s*$/
 

@@ -1,6 +1,7 @@
 import { screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { renderMermaid } from './components/renderMermaid.ts'
 import { db } from './db.ts'
 import { expectPath, renderAt } from './test/router.tsx'
 
@@ -146,6 +147,7 @@ describe('routes', () => {
         'href',
         expect.stringMatching(new RegExp(`/projects/${projectId}/diagrams/\\d+$`)),
       )
+      expect(await within(agent).findByTestId('mermaid-svg')).toHaveTextContent('class Book')
       const sidebar = screen.getByRole('navigation', { name: /project/i })
       expect(await within(sidebar).findByRole('link', { name: /domain/i })).toBeInTheDocument()
       expect(within(sidebar).getByRole('link', { name: /model a library/i })).toBeInTheDocument()
@@ -216,16 +218,62 @@ describe('routes', () => {
   })
 
   describe('diagram page', () => {
-    it('shows the diagram name and source', async () => {
+    const source = 'classDiagram\n  Book <|-- Ebook'
+
+    async function seedDiagram(diagramSource = source) {
       const projectId = await seedProject()
-      const diagramId = await db.diagrams.add({
-        projectId, type: 'class', name: 'Domain', source: 'classDiagram\n  Book <|-- Ebook',
-      })
+      const diagramId = await db.diagrams.add({ projectId, type: 'class', name: 'Domain', source: diagramSource })
+      return { projectId, diagramId }
+    }
+
+    it('draws the diagram as SVG under its name', async () => {
+      const { projectId, diagramId } = await seedDiagram()
       renderAt(`/projects/${projectId}/diagrams/${diagramId}`)
 
-      const figure = await screen.findByRole('figure')
-      expect(figure).toHaveTextContent('Domain')
-      expect(figure).toHaveTextContent('Book <|-- Ebook')
+      const figure = await screen.findByRole('figure', { name: 'Domain' })
+      expect(await within(figure).findByTestId('mermaid-svg')).toHaveTextContent('Book <|-- Ebook')
+      expect(renderMermaid).toHaveBeenCalledWith(source)
+    })
+
+    it('explains when the diagram cannot be drawn and shows its source', async () => {
+      vi.mocked(renderMermaid).mockRejectedValueOnce(new Error('Parse error on line 2'))
+      const { projectId, diagramId } = await seedDiagram()
+      renderAt(`/projects/${projectId}/diagrams/${diagramId}`)
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(/parse error on line 2/i)
+      expect(screen.getByText(/Book <\|-- Ebook/)).toBeInTheDocument()
+    })
+
+    it('edits the Mermaid source', async () => {
+      const { projectId, diagramId } = await seedDiagram()
+      renderAt(`/projects/${projectId}/diagrams/${diagramId}`)
+
+      await userEvent.click(await screen.findByRole('button', { name: /edit source/i }))
+      const editor = screen.getByRole('textbox', { name: /mermaid source/i })
+      expect(editor).toHaveValue(source)
+      await userEvent.clear(editor)
+      await userEvent.type(editor, 'classDiagram{Enter}  class Loan')
+      await userEvent.click(screen.getByRole('button', { name: /save/i }))
+
+      await vi.waitFor(async () =>
+        expect((await db.diagrams.get(diagramId))?.source).toBe('classDiagram\n  class Loan'),
+      )
+      expect(screen.queryByRole('textbox', { name: /mermaid source/i })).toBeNull()
+    })
+
+    it('offers the SVG for download', async () => {
+      const { projectId, diagramId } = await seedDiagram()
+      renderAt(`/projects/${projectId}/diagrams/${diagramId}`)
+
+      const link = await screen.findByRole('link', { name: /download svg/i })
+      expect(link).toHaveAttribute('download', 'Domain.svg')
+      expect(link.getAttribute('href')).toMatch(/^data:image\/svg\+xml/)
+    })
+
+    it('reports a missing diagram', async () => {
+      const projectId = await seedProject()
+      renderAt(`/projects/${projectId}/diagrams/999`)
+      expect(await screen.findByText(/diagram not found/i)).toBeInTheDocument()
     })
   })
 })

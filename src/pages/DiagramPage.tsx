@@ -1,8 +1,10 @@
 import { useLiveQuery } from 'dexie-react-hooks'
+import { useId, useState } from 'react'
 import { useParams } from 'react-router'
-import { RenderedHtml } from '../components/RenderedHtml.tsx'
-import { db } from '../db.ts'
-import { Diagram } from '../lib/index.ts'
+import { MermaidSvg } from '../components/MermaidSvg.tsx'
+import { useMermaid } from '../components/useMermaid.ts'
+import { db, type DiagramRecord } from '../db.ts'
+import { diagramTypeLabel } from '../lib/index.ts'
 import { NotFound } from './NotFound.tsx'
 
 export function DiagramPage() {
@@ -12,14 +14,82 @@ export function DiagramPage() {
 
   if (record === null) return <NotFound what="Diagram" />
   if (!record) return null
+  return <DiagramView key={record.id} diagram={record} />
+}
 
-  const diagram = new Diagram(record.type, record.name, record.source)
+const button =
+  'rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800'
+
+function DiagramView({ diagram }: { diagram: DiagramRecord }) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const editing = draft !== null
+  const shown = draft ?? diagram.source
+  const result = useMermaid(shown)
+  const captionId = useId()
+
+  async function save() {
+    if (draft === null) return
+    await db.diagrams.update(diagram.id, { source: draft })
+    setDraft(null)
+  }
+
   return (
     <div className="h-full overflow-auto p-6">
-      <RenderedHtml
-        of={diagram}
-        className="mx-auto max-w-4xl [&_figcaption]:mb-3 [&_figcaption]:font-medium [&_figcaption]:text-zinc-900 dark:[&_figcaption]:text-zinc-50 [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:border [&_pre]:border-zinc-200 [&_pre]:bg-zinc-50 [&_pre]:p-4 [&_pre]:text-sm [&_pre]:text-zinc-800 dark:[&_pre]:border-zinc-800 dark:[&_pre]:bg-zinc-900 dark:[&_pre]:text-zinc-200"
-      />
+      <figure aria-labelledby={captionId} className="mx-auto flex max-w-5xl flex-col gap-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <figcaption id={captionId} className="text-lg font-medium text-zinc-900 dark:text-zinc-50">
+            {diagram.name}
+          </figcaption>
+          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+            {diagramTypeLabel(diagram.type)}
+          </span>
+          <div className="ml-auto flex gap-2">
+            {!editing && (
+              <button type="button" onClick={() => setDraft(diagram.source)} className={button}>
+                Edit source
+              </button>
+            )}
+            {result.status === 'done' && (
+              <a
+                href={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(result.svg)}`}
+                download={`${diagram.name.replace(/[\\/:*?"<>|]/g, '-')}.svg`}
+                className={button}
+              >
+                Download SVG
+              </a>
+            )}
+          </div>
+        </div>
+
+        {editing && (
+          <div className="flex flex-col gap-2">
+            <textarea
+              aria-label="Mermaid source"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              spellCheck={false}
+              rows={Math.min(20, Math.max(6, draft.split('\n').length + 1))}
+              className="w-full rounded-xl border border-zinc-300 bg-white p-3 font-mono text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={save}
+                className="rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+              >
+                Save
+              </button>
+              <button type="button" onClick={() => setDraft(null)} className={button}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="rounded-2xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
+          <MermaidSvg result={result} source={shown} />
+        </div>
+      </figure>
     </div>
   )
 }

@@ -4,9 +4,11 @@ import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 
 import { Link, useParams } from 'react-router'
 import { NoProviderError, reply, sendMessage } from '../agent/conversation.ts'
 import { Avatar } from '../components/Avatar.tsx'
+import { MermaidSvg } from '../components/MermaidSvg.tsx'
 import { RenderedHtml } from '../components/RenderedHtml.tsx'
+import { useMermaid } from '../components/useMermaid.ts'
 import { db, type MessagePartRecord, type MessageRecord } from '../db.ts'
-import { MessagePart } from '../lib/index.ts'
+import { diagramTypeLabel, MessagePart } from '../lib/index.ts'
 import { NotFound } from './NotFound.tsx'
 
 export function ChatPage() {
@@ -215,17 +217,18 @@ function DiagramCard({ diagramId, projectId }: { diagramId: number; projectId?: 
   return (
     <Link
       to={`/projects/${projectId}/diagrams/${diagramId}`}
-      className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-white px-3 py-2 hover:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:border-zinc-500"
+      className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-white p-3 text-zinc-900 hover:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:hover:border-zinc-500"
     >
-      <svg viewBox="0 0 20 20" className="size-5 shrink-0 text-zinc-500" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-        <rect x="2.5" y="3" width="6" height="5" rx="1" />
-        <rect x="11.5" y="12" width="6" height="5" rx="1" />
-        <path d="M5.5 8v6.5h6" />
-      </svg>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate font-medium">{diagram.name}</span>
-        <span className="block text-xs text-zinc-500">{diagram.type} diagram · Open</span>
+      <span className="flex items-baseline justify-between gap-3">
+        <span className="truncate font-medium">{diagram.name}</span>
+        <span className="shrink-0 text-xs text-zinc-500">{diagramTypeLabel(diagram.type)} · Open</span>
       </span>
+      <DiagramPreview source={diagram.source} />
     </Link>
   )
+}
+
+function DiagramPreview({ source }: { source: string }) {
+  const result = useMermaid(source)
+  return <MermaidSvg result={result} source={source} className="max-h-80 overflow-hidden [&_svg]:max-h-80" />
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { diagramTypeOf, parseReply } from './parseReply.ts'
+import { diagramTypeLabel, diagramTypeOf, parseReply } from './parseReply.ts'
 
 const titled = (title: string, body: string) => `---\ntitle: ${title}\n---\n${body}`
 
@@ -48,5 +48,14 @@ describe('diagramTypeOf', () => {
     ['mindmap', 'mermaid'],
   ])('%s is a %s diagram', (header, type) => {
     expect(diagramTypeOf(titled('X', `%% comment\n${header}\n  a`))).toBe(type)
+  })
+})
+
+describe('diagramTypeLabel', () => {
+  it('names known types and falls back for anything else', () => {
+    expect(diagramTypeLabel('class')).toBe('Class diagram')
+    expect(diagramTypeLabel('er')).toBe('ER diagram')
+    expect(diagramTypeLabel('mermaid')).toBe('Diagram')
+    expect(diagramTypeLabel('something-new')).toBe('Diagram')
   })
 })
