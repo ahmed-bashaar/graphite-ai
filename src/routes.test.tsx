@@ -157,13 +157,16 @@ describe('routes', () => {
       const { projectId, chatSessionId } = await seedChat()
       await seedOllama()
       let answer: (value: Response) => void = () => {}
-      vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => (answer = resolve))))
+      const fetch = vi.fn(() => new Promise<Response>((resolve) => (answer = resolve)))
+      vi.stubGlobal('fetch', fetch)
       renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
 
       await userEvent.type(await screen.findByRole('textbox', { name: /message/i }), 'hi{Enter}')
 
       expect(await screen.findByRole('status')).toHaveTextContent(/thinking/i)
       expect(screen.getByRole('button', { name: /send/i })).toBeDisabled()
+      // The status shows before the request goes out (the user message is saved first).
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalled())
       answer(Response.json({ message: { content: 'hello' } }))
       await vi.waitFor(() => expect(screen.queryByRole('status')).toBeNull())
     })
