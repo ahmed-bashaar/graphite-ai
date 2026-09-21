@@ -6,6 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Graphite AI is at an early stage: the UI in `src/App.tsx` is still the Vite `react-ts` template (React 19, TypeScript ~6, Vite 8), with Tailwind, Motion, Dexie, and Vitest wired in but not yet used by real features. The domain model from the UML class diagram in `docs/uml/` is implemented in `src/lib/` as framework-free TypeScript (no React imports), re-exported from `src/lib/index.ts`. There is no concrete LLM provider yet. Treat the UML as the spec when extending it.
 
+## Development workflow
+
+- **Test-driven development (TDD) is required.** For every feature or bug fix, write a failing test first, confirm it fails for the expected reason, then write the minimum code to make it pass, then refactor with the tests green (red → green → refactor). Don't write production code without a test that demands it.
+- **Keep this file current.** After every change, update CLAUDE.md so it reflects the new state of the project (commands, libraries, architecture, conventions, project state). Include the CLAUDE.md update in the same commit as the change.
+
 ## Commands
 
 ```sh
