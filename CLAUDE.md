@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-Graphite AI is at the scaffold stage: the UI in `src/App.tsx` is still the Vite `react-ts` template (React 19, TypeScript ~6, Vite 8), with Tailwind, Motion, Dexie, and Vitest wired in but not yet used by real features. The intended application design exists only as a UML class diagram in `docs/uml/` — treat that as the spec when building out real code.
+Graphite AI is at an early stage: the UI in `src/App.tsx` is still the Vite `react-ts` template (React 19, TypeScript ~6, Vite 8), with Tailwind, Motion, Dexie, and Vitest wired in but not yet used by real features. The domain model from the UML class diagram in `docs/uml/` is implemented in `src/lib/` as framework-free TypeScript (no React imports), re-exported from `src/lib/index.ts`. There is no concrete LLM provider yet. Treat the UML as the spec when extending it.
 
 ## Commands
 
@@ -39,9 +39,9 @@ npm run preview   # serve the production build
 - `tsconfig.app.json` enables `verbatimModuleSyntax` (use `import type` for type-only imports), `erasableSyntaxOnly` (no `enum`, `namespace`, or constructor parameter properties — use union types / `as const` objects instead), `allowImportingTsExtensions` (imports like `./App.tsx` are fine), and `noUnusedLocals`/`noUnusedParameters`.
 - ESLint: `@eslint/js` + `typescript-eslint` recommended (not type-aware), `react-hooks`, and `react-refresh` (component files should only export components, for HMR).
 
-## Intended architecture (from `docs/uml/`)
+## Architecture (from `docs/uml/`, implemented in `src/lib/`)
 
-`docs/uml/graphite-ai-uml.mdj` is a StarUML model; `docs/uml/Class.jpg` is its rendered class diagram. Update both if the design changes. The planned domain model is an AI chat app that produces diagrams:
+`docs/uml/graphite-ai-uml.mdj` is a StarUML model; `docs/uml/Class.jpg` is its rendered class diagram. Update both if the design changes. `Class.jpg` is the source of truth: the `.mdj` also contains stale elements that are not on the diagram (TextRenderer, RenderableAscii, Eventful, EventListener, Referencable, MessageBlock). Don't implement those. The domain model is an AI chat app that produces diagrams:
 
 - **Project** composes **ChatSession**s and **Diagram**s.
 - **ChatSession** holds a `draft` and composes **Message**s (`sender`, `on`, `isSent`); each Message composes **MessagePart**s (`type`, `content`). **DiagramReference** is a MessagePart subtype that points at a Diagram.
@@ -49,3 +49,14 @@ npm run preview   # serve the production build
 - **LlmProvider** (`provideModel(args)`) composes LlmModels. LlmProvider and AgenticTool implement **Parametered** (`exposeParameters()`), i.e. they describe their own configurable arguments.
 - **Renderable** (`render()`) is implemented by Message, MessagePart, and Diagram. Its purpose: convert ASCII-based formats the LLM produces (JSON, XML, Markdown) into browser-native output (HTML, CSS, SVG).
 - **EventEmitter** (`on`/`off`/protected `emit`) drives the chat loop: the ChatSession depends on it, and the agent learns when to respond via emitted events rather than direct calls, so multiple messages can go back and forth asynchronously.
+
+### How `src/lib/` maps onto the UML
+
+One file per class/interface, named after it. Places where the code intentionally differs from or adds to the diagram:
+
+- `ChatSession` **extends** `EventEmitter<ChatSessionEvents>` (events: `message`, `draft`, `error`); a subclass is the only way to call the protected `emit`.
+- UML `draft(message)` is `setDraft(message)`, because TS can't have a property and a method named `draft`. `send(message = this.draft)` marks the message as sent, stamps `on`, appends it and emits `message`.
+- `AiAgent.attach(session)` subscribes to `message` and replies via `session.send(reply)`, ignoring its own messages. `ChatSession.setAgent()` handles attach/detach. Agent failures surface as the session's `error` event.
+- `LlmModel` and `LlmProvider` are abstract. `LlmModel.complete(history, tools)` is the extension point where a provider's API call and tool-calling loop live. It is not in the UML.
+- `AgenticTool` is concrete, built from `{ name, description, parameters, handler }`, and `call()` validates required args. Parameter shape: `Parameter` in `Parametered.ts`.
+- `render()` returns an HTML string. Always pass LLM-produced text through `escapeHtml` (`Renderable.ts`). Rendering is still a placeholder: `MessagePart` handles `text`/`code` only (no Markdown yet), and `Diagram` (which adds a `source` field) shows its escaped source instead of an SVG.
