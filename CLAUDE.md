@@ -2,9 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Goal
+
+The goal of this project is to build an AI agent that creates UML diagrams. The agent is called **GraphiteAI**. Users describe a system in a chat and GraphiteAI answers with UML diagrams.
+
 ## Project state
 
-Graphite AI is at an early stage: the UI in `src/App.tsx` is still the Vite `react-ts` template (React 19, TypeScript ~6, Vite 8), with Tailwind, Motion, Dexie, and Vitest wired in but not yet used by real features. The domain model from the UML class diagram in `docs/uml/` is implemented in `src/lib/` as framework-free TypeScript (no React imports), re-exported from `src/lib/index.ts`. There is no concrete LLM provider yet. Treat the UML as the spec when extending it.
+Graphite AI is at an early stage (React 19, TypeScript ~6, Vite 8, Tailwind, Motion, Dexie, React Router, Vitest). The front-end shell is built (see "Front-end" below): users can create projects, open chat sessions and send messages, and view diagrams. There is no agent reply yet, because no LLM provider exists; sent messages are only stored. The domain model from the UML class diagram in `docs/uml/` is implemented in `src/lib/` as framework-free TypeScript (no React imports), re-exported from `src/lib/index.ts`. There is no concrete LLM provider yet. Treat the UML as the spec when extending it.
 
 ## Development workflow
 
@@ -28,7 +32,9 @@ npm run preview   # serve the production build
 
 - **Tailwind CSS v4** via the `@tailwindcss/vite` plugin — there is no `tailwind.config.js` or PostCSS config. `src/index.css` starts with `@import "tailwindcss";`; customize with `@theme` blocks in CSS, not a JS config. Preflight is active, so the leftover template styles in `index.css`/`App.css` sit on top of Tailwind's reset.
 - **Motion** (formerly Framer Motion) — import from `motion/react` (not `framer-motion`). `src/main.tsx` wraps the app in `<MotionConfig reducedMotion="user">`, so animations respect the OS reduced-motion setting.
-- **Dexie** (IndexedDB) — the single database instance lives in `src/db.ts` as `db`, typed with `EntityTable`. Tables mirror the UML: `projects`, `chatSessions`, `messages`, `diagrams`. MessageParts are composed by their Message and stored inline in `messages.parts` (a `type`-discriminated union), not in their own table. The `stores()` strings list only the primary key and indexed fields. To change the schema, add a new `db.version(n + 1).stores(...)`; don't edit the existing version.
+- **Dexie** (IndexedDB) — the single database instance lives in `src/db.ts` as `db`, typed with `EntityTable`. Tables mirror the UML: `projects`, `chatSessions` (`title`, `draft`), `messages`, `diagrams` (`type`, `name`, `source`, matching `Diagram` in `src/lib`). MessageParts are composed by their Message and stored inline in `messages.parts` (a `type`-discriminated union), not in their own table. The `stores()` strings list only the primary key and indexed fields. Adding non-indexed fields needs no version bump. To change indexes, add a new `db.version(n + 1).stores(...)`; don't edit the existing version.
+- **dexie-react-hooks** — components read the database with `useLiveQuery`, so the UI re-renders when any write lands (no manual refetching). A live query returns `undefined` while loading. Pages that must tell "loading" from "missing" return `(await table.get(id)) ?? null`, where `null` means not found.
+- **React Router v8** (`react-router` package; there's no `react-router-dom`). Data-router style: the route table is `routes` in `src/routes.tsx`. `App.tsx` passes it to `createBrowserRouter`, and tests pass it to `createMemoryRouter`. Import everything, including `RouterProvider`, from `react-router`.
 
 ## Testing
 
@@ -36,6 +42,7 @@ npm run preview   # serve the production build
 - Globals are **off**: import `describe`/`it`/`expect`/`vi` from `vitest`. The setup file registers jest-dom matchers and calls Testing Library's `cleanup` after each test.
 - The setup file also imports `fake-indexeddb/auto`, so Dexie runs in memory during tests. Reset state between tests with `await db.delete(); await db.open()` (see `src/db.test.ts`).
 - Use `@testing-library/react` plus `@testing-library/user-event` for component tests.
+- Page and route tests live in `src/routes.test.tsx`. They render `routes` in a memory router at a given path (`renderAt`), seed Dexie directly, and check navigation with `expectPath` (`vi.waitFor` on `router.state.location.pathname`). Reset the db in `beforeEach`, not `afterEach`: an `afterEach` reset runs before Testing Library's cleanup, while live queries are still mounted.
 - `src/lib/` tests use a stub `LlmModel` subclass (see `ChatSession.test.ts`). Agent replies are async, so wait with `vi.waitFor(() => expect(session.messages).toHaveLength(n))`.
 - Test files are under `src/`, so `tsc -b` (and therefore `npm run build`) type-checks them too.
 
@@ -66,3 +73,20 @@ One file per class/interface, named after it. Places where the code intentionall
 - `LlmModel` and `LlmProvider` are abstract. `LlmModel.complete(history, tools)` is the extension point where a provider's API call and tool-calling loop live. It is not in the UML.
 - `AgenticTool` is concrete, built from `{ name, description, parameters, handler }`, and `call()` validates required args. Parameter shape: `Parameter` in `Parametered.ts`.
 - `render()` returns an HTML string. Always pass LLM-produced text through `escapeHtml` (`Renderable.ts`). Rendering is still a placeholder: `MessagePart` handles `text`/`code` only (no Markdown yet), and `Diagram` (which adds a `source` field) shows its escaped source instead of an SVG.
+
+## Front-end (`src/routes.tsx`, `src/pages/`, `src/components/`)
+
+The main user journey starts on the projects page. Inside a project, the user works with chat sessions and diagrams. The layout follows the user's wireframe: a sidebar on the left, a top bar, and the chat in the middle, with agent messages on the left, user messages on the right, and the input bar at the bottom.
+
+| Path | Component | What it shows |
+| --- | --- | --- |
+| `/` | `ProjectsPage` | Project list and create form; creating a project opens it |
+| `/projects/:projectId` | `ProjectLayout` | Shell: sidebar (brand link to `/`, "New chat", chat and diagram `NavLink`s) and a top bar with the project name, around an `<Outlet>` |
+| ↳ index | `ProjectHome` | Empty-state hint |
+| ↳ `chats/:chatId` | `ChatPage` | Messages ordered by the `[chatSessionId+on]` index, and a composer (Enter sends, Shift+Enter adds a newline). The first message renames a `NEW_CHAT_TITLE` session (`src/pages/chat.ts`) |
+| ↳ `diagrams/:diagramId` | `DiagramPage` | The diagram, rendered through `Diagram.render()` |
+| `*` | `NotFound` | Also used for a missing project, chat, or diagram |
+
+- Messages from sender `'user'` are the user's. Any other sender is treated as the agent (`data-sender="agent"`).
+- Render LLM content through `src/lib` Renderables with `<RenderedHtml of={...}>`, never as raw strings. `MessagePart` and `Diagram` escape their input. Style the generated markup with Tailwind arbitrary child variants (`[&_pre]:...`).
+- Styling uses Tailwind only, with a zinc ("graphite") palette. Dark mode uses `dark:` variants, which follow the OS setting. There are no component CSS files; `src/index.css` holds only the Tailwind import and base styles. The logo mark is `components/Logo.tsx`, and `public/favicon.svg` is the same mark.

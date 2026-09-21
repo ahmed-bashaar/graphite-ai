@@ -9,7 +9,7 @@ describe('db', () => {
 
   it('stores messages and queries them by chat session', async () => {
     const projectId = await db.projects.add({ name: 'Demo', createdAt: new Date() })
-    const chatSessionId = await db.chatSessions.add({ projectId, draft: '' })
+    const chatSessionId = await db.chatSessions.add({ projectId, title: 'New chat', draft: '' })
     await db.messages.add({
       chatSessionId,
       sender: 'user',

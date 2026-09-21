@@ -12,6 +12,8 @@ export interface ProjectRecord {
 export interface ChatSessionRecord {
   id: number
   projectId: number
+  /** Shown in the project sidebar; set from the first message sent. */
+  title: string
   draft: string
 }
 
@@ -31,7 +33,10 @@ export interface MessageRecord {
 export interface DiagramRecord {
   id: number
   projectId: number
-  content: string
+  type: string
+  name: string
+  /** ASCII source produced by the LLM (see Diagram in src/lib). */
+  source: string
 }
 
 export const db = new Dexie('graphite-ai') as Dexie & {
@@ -42,7 +47,7 @@ export const db = new Dexie('graphite-ai') as Dexie & {
 }
 
 // Only primary keys and queried fields are listed; bump the version and add a
-// new stores() call when changing the schema.
+// new stores() call when changing them. Non-indexed fields need no bump.
 db.version(1).stores({
   projects: '++id, createdAt',
   chatSessions: '++id, projectId',
