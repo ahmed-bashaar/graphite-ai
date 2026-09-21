@@ -18,6 +18,12 @@ describe('MessagePart', () => {
     expect(new MessagePart('text', '<b>hi</b>\nthere').render()).toBe('<p>&lt;b&gt;hi&lt;/b&gt;<br>there</p>')
   })
 
+  it('renders text as Markdown', () => {
+    expect(new MessagePart('text', '- **Book**\n- Loan').render()).toBe(
+      '<ul><li><strong>Book</strong></li><li>Loan</li></ul>',
+    )
+  })
+
   it('renders code as an escaped pre block', () => {
     expect(new MessagePart('code', 'a < b').render()).toBe('<pre><code>a &lt; b</code></pre>')
   })

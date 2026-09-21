@@ -6,6 +6,7 @@ import { NoProviderError, reply, sendMessage } from '../agent/conversation.ts'
 import { Avatar } from '../components/Avatar.tsx'
 import { MermaidSvg } from '../components/MermaidSvg.tsx'
 import { RenderedHtml } from '../components/RenderedHtml.tsx'
+import { markdownStyles } from '../components/markdownStyles.ts'
 import { useMermaid } from '../components/useMermaid.ts'
 import { db, type MessagePartRecord, type MessageRecord } from '../db.ts'
 import { diagramTypeLabel, MessagePart } from '../lib/index.ts'
@@ -37,11 +38,30 @@ function Chat({ chatSessionId }: { chatSessionId: number }) {
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<unknown>(null)
   const scroller = useRef<HTMLDivElement>(null)
+  const content = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const el = scroller.current
     if (el) el.scrollTop = el.scrollHeight
   }, [messages?.length, pending])
+
+  // Diagram previews render asynchronously; stay pinned to the bottom while they grow,
+  // unless the user has scrolled up.
+  useEffect(() => {
+    const el = scroller.current
+    if (!el || !content.current || typeof ResizeObserver === 'undefined') return
+    let pinned = true
+    const onScroll = () => (pinned = el.scrollHeight - el.scrollTop - el.clientHeight < 80)
+    const observer = new ResizeObserver(() => {
+      if (pinned) el.scrollTop = el.scrollHeight
+    })
+    el.addEventListener('scroll', onScroll)
+    observer.observe(content.current)
+    return () => {
+      el.removeEventListener('scroll', onScroll)
+      observer.disconnect()
+    }
+  }, [])
 
   async function run(action: () => Promise<void>) {
     setPending(true)
@@ -78,7 +98,7 @@ function Chat({ chatSessionId }: { chatSessionId: number }) {
   return (
     <div className="flex h-full flex-col">
       <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
+        <div ref={content} className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
           {messages?.length === 0 && (
             <p className="py-16 text-center text-zinc-500 dark:text-zinc-400">
               Describe the system you want to model and GraphiteAI will draw the UML.
@@ -191,7 +211,7 @@ function ChatMessage({ message, projectId }: { message: MessageRecord; projectId
     >
       <Avatar who={who} />
       <div
-        className={`flex max-w-[80%] min-w-0 flex-col gap-2 rounded-2xl px-4 py-2.5 leading-relaxed [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-zinc-950 [&_pre]:p-3 [&_pre]:text-sm [&_pre]:text-zinc-100 ${
+        className={`flex max-w-[80%] min-w-0 flex-col gap-2 rounded-2xl px-4 py-2.5 leading-relaxed ${
           who === 'user'
             ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
             : 'border border-zinc-200 bg-zinc-50 text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100'
@@ -207,7 +227,7 @@ function ChatMessage({ message, projectId }: { message: MessageRecord; projectId
 
 function Part({ part, projectId }: { part: MessagePartRecord; projectId?: number }) {
   if (part.type === 'diagram-reference') return <DiagramCard diagramId={part.diagramId} projectId={projectId} />
-  return <RenderedHtml of={new MessagePart(part.type, part.content)} />
+  return <RenderedHtml of={new MessagePart(part.type, part.content)} className={markdownStyles} />
 }
 
 function DiagramCard({ diagramId, projectId }: { diagramId: number; projectId?: number }) {

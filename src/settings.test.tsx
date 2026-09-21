@@ -26,7 +26,7 @@ describe('settings', () => {
     const router = renderAt('/')
     await userEvent.click(screen.getByRole('link', { name: /settings/i }))
     await expectPath(router, '/settings')
-    expect(screen.getByRole('heading', { name: /llm providers/i })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /llm providers/i })).toBeInTheDocument()
 
     const projectId = await db.projects.add({ name: 'P', createdAt: new Date() })
     await router.navigate(`/projects/${projectId}`)
@@ -48,7 +48,7 @@ describe('settings', () => {
     await userEvent.click(await screen.findByRole('link', { name: /anthropic/i }))
     await expectPath(router, '/settings/providers/new/anthropic')
 
-    expect(screen.getByLabelText(/name/i)).toHaveValue('Anthropic')
+    expect(await screen.findByLabelText(/name/i)).toHaveValue('Anthropic')
     expect(screen.getByLabelText(/model/i)).toHaveValue('claude-opus-5')
     const apiKey = screen.getByLabelText(/api key/i)
     expect(apiKey).toHaveAttribute('type', 'password')
@@ -63,7 +63,7 @@ describe('settings', () => {
       name: 'Anthropic',
       args: { apiKey: 'sk-ant-test', model: 'claude-opus-5' },
     })
-    const list = screen.getByRole('list', { name: /configured providers/i })
+    const list = await screen.findByRole('list', { name: /configured providers/i })
     expect(await within(list).findByText('Anthropic')).toBeInTheDocument()
     expect(within(list).getByText(/claude-opus-5/)).toBeInTheDocument()
     expect(within(list).queryByText(/sk-ant-test/)).toBeNull()
