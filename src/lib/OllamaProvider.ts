@@ -1,4 +1,4 @@
-import { toChatTurns } from './chatTurns.ts'
+import { toChatTurns, withSystem } from './chatTurns.ts'
 import { joinUrl, requestJson } from './http.ts'
 import { LlmModel } from './LlmModel.ts'
 import { LlmProvider, type ProviderOptions } from './LlmProvider.ts'
@@ -48,11 +48,11 @@ class OllamaModel extends LlmModel {
   }
 
   // Tools are not passed to the API yet.
-  async complete(history: Message[]): Promise<MessagePart[]> {
+  async complete(history: Message[], _tools: unknown, instructions = ''): Promise<MessagePart[]> {
     const data = await requestJson<{ message: { content: string } }>(this.fetch, joinUrl(this.baseUrl, '/api/chat'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ model: this.name, messages: toChatTurns(history), stream: false }),
+      body: JSON.stringify({ model: this.name, messages: withSystem(instructions, toChatTurns(history)), stream: false }),
     })
     return [new MessagePart('text', data.message.content)]
   }

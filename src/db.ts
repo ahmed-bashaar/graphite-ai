@@ -17,10 +17,13 @@ export interface ChatSessionRecord {
   /** Shown in the project sidebar; set from the first message sent. */
   title: string
   draft: string
+  /** Provider used for replies; unset or deleted means the first configured one. */
+  providerId?: number
 }
 
 export type MessagePartRecord =
   | { type: 'text'; content: string }
+  | { type: 'code'; content: string; language?: string }
   | { type: 'diagram-reference'; diagramId: number }
 
 export interface MessageRecord {

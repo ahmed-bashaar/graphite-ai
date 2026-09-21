@@ -53,10 +53,11 @@ class AnthropicModel extends LlmModel {
   }
 
   // Tools are not passed to the API yet.
-  async complete(history: Message[]): Promise<MessagePart[]> {
+  async complete(history: Message[], _tools: unknown, instructions = ''): Promise<MessagePart[]> {
     const response = await this.client.beta.messages.create({
       model: this.name,
       max_tokens: 16000,
+      ...(instructions && { system: instructions }),
       messages: toChatTurns(history),
       ...(FALLBACK_MODELS.has(this.name) && {
         betas: ['server-side-fallback-2026-07-01'],

@@ -1,4 +1,4 @@
-import { toChatTurns } from './chatTurns.ts'
+import { toChatTurns, withSystem } from './chatTurns.ts'
 import { joinUrl, requestJson } from './http.ts'
 import { LlmModel } from './LlmModel.ts'
 import { LlmProvider, type ProviderOptions } from './LlmProvider.ts'
@@ -61,14 +61,14 @@ class OpenAiCompatibleModel extends LlmModel {
   }
 
   // Tools are not passed to the API yet.
-  async complete(history: Message[]): Promise<MessagePart[]> {
+  async complete(history: Message[], _tools: unknown, instructions = ''): Promise<MessagePart[]> {
     const data = await requestJson<{ choices: { message: { content: string | null } }[] }>(
       this.fetch,
       joinUrl(this.baseUrl, '/chat/completions'),
       {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...authHeaders(this.apiKey) },
-        body: JSON.stringify({ model: this.name, messages: toChatTurns(history) }),
+        body: JSON.stringify({ model: this.name, messages: withSystem(instructions, toChatTurns(history)) }),
       },
     )
     return [new MessagePart('text', data.choices[0]?.message.content ?? '')]

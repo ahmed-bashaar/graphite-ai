@@ -7,13 +7,16 @@ export class AiAgent {
   name: string
   model: LlmModel
   tools: AgenticTool[]
+  /** System prompt sent with every request. */
+  instructions: string
   private session: ChatSession | null = null
   private unsubscribe: (() => void) | null = null
 
-  constructor(name: string, model: LlmModel, tools: AgenticTool[] = []) {
+  constructor(name: string, model: LlmModel, tools: AgenticTool[] = [], instructions = '') {
     this.name = name
     this.model = model
     this.tools = tools
+    this.instructions = instructions
   }
 
   /**
@@ -39,7 +42,7 @@ export class AiAgent {
 
   async respond(message: Message): Promise<Message> {
     const history = this.session ? this.session.messages : [message]
-    const contents = await this.model.complete(history, this.tools)
+    const contents = await this.model.complete(history, this.tools, this.instructions)
     return new Message({ sender: this.name, contents })
   }
 }

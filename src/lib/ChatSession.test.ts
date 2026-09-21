@@ -104,7 +104,17 @@ describe('AiAgent in a ChatSession', () => {
     session.send(userMessage('hi'))
     await waitForMessages(session, 2)
 
-    expect(model.complete).toHaveBeenCalledWith(expect.any(Array), [tool])
+    expect(model.complete).toHaveBeenCalledWith(expect.any(Array), [tool], '')
+  })
+
+  it('passes its instructions (system prompt) to the model', async () => {
+    const model = new EchoModel('echo')
+    const session = new ChatSession(new AiAgent('bot', model, [], 'Only draw UML.'))
+
+    session.send(userMessage('hi'))
+    await waitForMessages(session, 2)
+
+    expect(model.complete).toHaveBeenCalledWith(expect.any(Array), [], 'Only draw UML.')
   })
 
   it('reports model failures as an error event', async () => {

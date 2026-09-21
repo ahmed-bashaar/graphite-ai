@@ -116,6 +116,14 @@ describe('AnthropicProvider', () => {
     expect(calls[0].body).toMatchObject({ model: 'claude-opus-5', messages: turns, fallbacks: 'default' })
   })
 
+  it('sends the instructions as the system prompt', async () => {
+    const { fetch, calls } = fakeFetch(anthropicReply())
+    await new AnthropicProvider({ fetch })
+      .provideModel({ apiKey: 'sk-test' })
+      .complete(history, [], 'Only draw UML.')
+    expect(calls[0].body).toMatchObject({ system: 'Only draw UML.' })
+  })
+
   it('does not send fallbacks for models that do not support them', async () => {
     const { fetch, calls } = fakeFetch(anthropicReply({ model: 'claude-haiku-4-5' }))
     await new AnthropicProvider({ fetch })
@@ -162,6 +170,12 @@ describe('OllamaProvider', () => {
     })
   })
 
+  it('sends the instructions as a leading system message', async () => {
+    const { fetch, calls } = fakeFetch({ message: { role: 'assistant', content: 'ok' } })
+    await new OllamaProvider({ fetch }).provideModel({ model: 'llama3.2' }).complete(history, [], 'Only draw UML.')
+    expect(calls[0].body).toMatchObject({ messages: [{ role: 'system', content: 'Only draw UML.' }, ...turns] })
+  })
+
   it('surfaces HTTP errors with the server message', async () => {
     const { fetch } = fakeFetch(new HttpError(404, { error: 'model "nope" not found' }))
     const model = new OllamaProvider({ fetch }).provideModel({ model: 'nope' })
@@ -196,5 +210,13 @@ describe('OpenAiCompatibleProvider', () => {
       url: 'https://api.openai.com/v1/chat/completions',
       body: { model: 'gpt-5', messages: turns },
     })
+  })
+
+  it('sends the instructions as a leading system message', async () => {
+    const { fetch, calls } = fakeFetch({ choices: [{ message: { role: 'assistant', content: 'ok' } }] })
+    await new OpenAiCompatibleProvider({ fetch })
+      .provideModel({ model: 'gpt-5' })
+      .complete(history, [], 'Only draw UML.')
+    expect(calls[0].body).toMatchObject({ messages: [{ role: 'system', content: 'Only draw UML.' }, ...turns] })
   })
 })

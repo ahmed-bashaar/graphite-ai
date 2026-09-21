@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate, useParams } from 'react-router'
 import { Brand } from '../components/Brand.tsx'
 import { SettingsIcon } from '../components/SettingsIcon.tsx'
 import { db } from '../db.ts'
-import { NEW_CHAT_TITLE } from './chat.ts'
+import { NEW_CHAT_TITLE } from '../agent/chatTitle.ts'
 import { NotFound } from './NotFound.tsx'
 
 const navItem = ({ isActive }: { isActive: boolean }) =>

@@ -1,6 +1,6 @@
 import { screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from './db.ts'
 import { expectPath, renderAt } from './test/router.tsx'
 
@@ -8,11 +8,29 @@ async function seedProject(name = 'Library system') {
   return db.projects.add({ name, createdAt: new Date() })
 }
 
+async function seedChat() {
+  const projectId = await seedProject()
+  const chatSessionId = await db.chatSessions.add({ projectId, draft: '', title: 'New chat' })
+  return { projectId, chatSessionId }
+}
+
+function seedOllama() {
+  return db.providers.add({ kind: 'ollama', name: 'Local', args: { baseUrl: 'http://ollama.test', model: 'llama3.2' } })
+}
+
+function stubOllamaReply(content: string) {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ message: { role: 'assistant', content } })))
+}
+
 describe('routes', () => {
   // Reset before (not after) each test so no mounted live query sees a closed db.
   beforeEach(async () => {
     await db.delete()
     await db.open()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
   describe('projects page', () => {
@@ -110,19 +128,80 @@ describe('routes', () => {
       expect(item.querySelector('b')).toBeNull()
     })
 
-    it('sends a message, clears the input and titles the chat after it', async () => {
-      const projectId = await seedProject()
-      const chatSessionId = await db.chatSessions.add({ projectId, draft: '', title: 'New chat' })
+    it('sends a message and shows the agent reply, saving its diagram to the project', async () => {
+      const { projectId, chatSessionId } = await seedChat()
+      await seedOllama()
+      stubOllamaReply('Here you go:\n\n```mermaid\n---\ntitle: Domain\n---\nclassDiagram\n  class Book\n```')
       renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
 
       const input = await screen.findByRole('textbox', { name: /message/i })
       await userEvent.type(input, 'Model a library{Enter}')
-
-      expect(await screen.findByRole('article')).toHaveTextContent('Model a library')
       expect(input).toHaveValue('')
-      const [message] = await db.messages.toArray()
-      expect(message).toMatchObject({ chatSessionId, sender: 'user', isSent: true })
-      expect((await db.chatSessions.get(chatSessionId))?.title).toBe('Model a library')
+
+      await vi.waitFor(() => expect(screen.getAllByRole('article')).toHaveLength(2))
+      const [mine, agent] = screen.getAllByRole('article')
+      expect(mine).toHaveTextContent('Model a library')
+      expect(agent).toHaveTextContent('Here you go:')
+      expect(await within(agent).findByRole('link', { name: /domain/i })).toHaveAttribute(
+        'href',
+        expect.stringMatching(new RegExp(`/projects/${projectId}/diagrams/\\d+$`)),
+      )
+      const sidebar = screen.getByRole('navigation', { name: /project/i })
+      expect(await within(sidebar).findByRole('link', { name: /domain/i })).toBeInTheDocument()
+      expect(within(sidebar).getByRole('link', { name: /model a library/i })).toBeInTheDocument()
+    })
+
+    it('shows that the agent is working while waiting for the reply', async () => {
+      const { projectId, chatSessionId } = await seedChat()
+      await seedOllama()
+      let answer: (value: Response) => void = () => {}
+      vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => (answer = resolve))))
+      renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+
+      await userEvent.type(await screen.findByRole('textbox', { name: /message/i }), 'hi{Enter}')
+
+      expect(await screen.findByRole('status')).toHaveTextContent(/thinking/i)
+      expect(screen.getByRole('button', { name: /send/i })).toBeDisabled()
+      answer(Response.json({ message: { content: 'hello' } }))
+      await vi.waitFor(() => expect(screen.queryByRole('status')).toBeNull())
+    })
+
+    it('shows a failed reply with a retry button', async () => {
+      const { projectId, chatSessionId } = await seedChat()
+      await seedOllama()
+      vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('Failed to fetch'))))
+      renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+
+      await userEvent.type(await screen.findByRole('textbox', { name: /message/i }), 'hi{Enter}')
+      expect(await screen.findByRole('alert')).toHaveTextContent(/failed to fetch/i)
+
+      stubOllamaReply('Recovered')
+      await userEvent.click(screen.getByRole('button', { name: /retry/i }))
+      await vi.waitFor(() => expect(screen.getAllByRole('article')).toHaveLength(2))
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+
+    it('asks for a provider when none is configured', async () => {
+      const { projectId, chatSessionId } = await seedChat()
+      renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+
+      expect(await screen.findByRole('link', { name: /add a provider/i })).toHaveAttribute('href', '/settings')
+      await userEvent.type(screen.getByRole('textbox', { name: /message/i }), 'hi')
+      expect(screen.getByRole('button', { name: /send/i })).toBeDisabled()
+    })
+
+    it('lets the user pick the provider for the chat', async () => {
+      const { projectId, chatSessionId } = await seedChat()
+      await seedOllama()
+      const otherId = await db.providers.add({ kind: 'anthropic', name: 'Claude', args: { apiKey: 'k', model: 'claude-opus-5' } })
+      renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+
+      const picker = await screen.findByRole('combobox', { name: /model/i })
+      await vi.waitFor(() => expect(within(picker).getAllByRole('option')).toHaveLength(2))
+      expect(picker).toHaveDisplayValue(/local · llama3\.2/i)
+      await userEvent.selectOptions(picker, String(otherId))
+
+      await vi.waitFor(async () => expect((await db.chatSessions.get(chatSessionId))?.providerId).toBe(otherId))
     })
 
     it('does not send blank messages', async () => {
