@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '../db.ts'
 import { NoProviderError, reply, sendMessage } from './conversation.ts'
-import { AGENT_NAME, INSTRUCTIONS } from './instructions.ts'
+import { AGENT_NAME, SYSTEM_PROMPT } from './systemPrompt.ts'
 
 type FetchLike = (url: string, init?: RequestInit) => Promise<Response>
 
@@ -46,7 +46,7 @@ describe('conversation', () => {
     vi.unstubAllGlobals()
   })
 
-  it('stores the user message, asks the provider with the GraphiteAI instructions, and stores the reply', async () => {
+  it('stores the user message, asks the provider with the GraphiteAI system prompt, and stores the reply', async () => {
     const { chatSessionId } = await seed()
     const fetch = ollamaReplies('Sure, which classes?')
 
@@ -59,7 +59,7 @@ describe('conversation', () => {
     ])
     expect(fetch.mock.calls[0][0]).toBe('http://ollama.test/api/chat')
     expect(requestBody(fetch).messages).toEqual([
-      { role: 'system', content: INSTRUCTIONS },
+      { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: 'Model a library' },
     ])
     expect((await db.chatSessions.get(chatSessionId))?.title).toBe('Model a library')

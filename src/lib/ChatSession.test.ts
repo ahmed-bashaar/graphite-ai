@@ -107,9 +107,11 @@ describe('AiAgent in a ChatSession', () => {
     expect(model.complete).toHaveBeenCalledWith(expect.any(Array), [tool], '')
   })
 
-  it('passes its instructions (system prompt) to the model', async () => {
+  it('passes its system prompt to the model', async () => {
     const model = new EchoModel('echo')
-    const session = new ChatSession(new AiAgent('bot', model, [], 'Only draw UML.'))
+    const agent = new AiAgent('bot', model, [], 'Only draw UML.')
+    expect(agent.systemPrompt).toBe('Only draw UML.')
+    const session = new ChatSession(agent)
 
     session.send(userMessage('hi'))
     await waitForMessages(session, 2)

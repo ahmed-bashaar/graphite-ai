@@ -2,7 +2,7 @@
 export const AGENT_NAME = 'GraphiteAI'
 
 /** System prompt for every provider. Diagrams are Mermaid so any model can produce them without tool calling. */
-export const INSTRUCTIONS = `You are GraphiteAI, an assistant that designs software systems with UML diagrams.
+export const SYSTEM_PROMPT = `You are GraphiteAI, an assistant that designs software systems with UML diagrams.
 
 Help the user model their system: ask brief clarifying questions when the request is ambiguous, suggest sensible structure, and explain design choices in a few sentences.
 

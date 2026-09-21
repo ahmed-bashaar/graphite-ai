@@ -116,7 +116,7 @@ describe('AnthropicProvider', () => {
     expect(calls[0].body).toMatchObject({ model: 'claude-opus-5', messages: turns, fallbacks: 'default' })
   })
 
-  it('sends the instructions as the system prompt', async () => {
+  it('sends the system prompt as the system prompt', async () => {
     const { fetch, calls } = fakeFetch(anthropicReply())
     await new AnthropicProvider({ fetch })
       .provideModel({ apiKey: 'sk-test' })
@@ -170,7 +170,7 @@ describe('OllamaProvider', () => {
     })
   })
 
-  it('sends the instructions as a leading system message', async () => {
+  it('sends the system prompt as a leading system message', async () => {
     const { fetch, calls } = fakeFetch({ message: { role: 'assistant', content: 'ok' } })
     await new OllamaProvider({ fetch }).provideModel({ model: 'llama3.2' }).complete(history, [], 'Only draw UML.')
     expect(calls[0].body).toMatchObject({ messages: [{ role: 'system', content: 'Only draw UML.' }, ...turns] })
@@ -212,7 +212,7 @@ describe('OpenAiCompatibleProvider', () => {
     })
   })
 
-  it('sends the instructions as a leading system message', async () => {
+  it('sends the system prompt as a leading system message', async () => {
     const { fetch, calls } = fakeFetch({ choices: [{ message: { role: 'assistant', content: 'ok' } }] })
     await new OpenAiCompatibleProvider({ fetch })
       .provideModel({ model: 'gpt-5' })

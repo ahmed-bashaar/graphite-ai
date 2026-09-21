@@ -8,15 +8,15 @@ export class AiAgent {
   model: LlmModel
   tools: AgenticTool[]
   /** System prompt sent with every request. */
-  instructions: string
+  systemPrompt: string
   private session: ChatSession | null = null
   private unsubscribe: (() => void) | null = null
 
-  constructor(name: string, model: LlmModel, tools: AgenticTool[] = [], instructions = '') {
+  constructor(name: string, model: LlmModel, tools: AgenticTool[] = [], systemPrompt = '') {
     this.name = name
     this.model = model
     this.tools = tools
-    this.instructions = instructions
+    this.systemPrompt = systemPrompt
   }
 
   /**
@@ -42,7 +42,7 @@ export class AiAgent {
 
   async respond(message: Message): Promise<Message> {
     const history = this.session ? this.session.messages : [message]
-    const contents = await this.model.complete(history, this.tools, this.instructions)
+    const contents = await this.model.complete(history, this.tools, this.systemPrompt)
     return new Message({ sender: this.name, contents })
   }
 }

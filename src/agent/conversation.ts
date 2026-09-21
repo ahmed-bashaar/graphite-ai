@@ -17,7 +17,7 @@ import {
 } from '../lib/index.ts'
 import { providerKinds } from '../providers.ts'
 import { NEW_CHAT_TITLE, titleFrom } from './chatTitle.ts'
-import { AGENT_NAME, INSTRUCTIONS } from './instructions.ts'
+import { AGENT_NAME, SYSTEM_PROMPT } from './systemPrompt.ts'
 
 /** No LLM provider is configured, so the agent can't reply. */
 export class NoProviderError extends Error {
@@ -72,7 +72,7 @@ export async function reply(chatSessionId: number): Promise<void> {
       if (message.sender === AGENT_NAME) resolve(message)
     })
     chat.on('error', reject)
-    chat.setAgent(new AiAgent(AGENT_NAME, model, [], INSTRUCTIONS))
+    chat.setAgent(new AiAgent(AGENT_NAME, model, [], SYSTEM_PROMPT))
     chat.send(history[history.length - 1])
   }).finally(() => chat.setAgent(null))
 

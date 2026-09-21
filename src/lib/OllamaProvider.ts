@@ -48,11 +48,11 @@ class OllamaModel extends LlmModel {
   }
 
   // Tools are not passed to the API yet.
-  async complete(history: Message[], _tools: unknown, instructions = ''): Promise<MessagePart[]> {
+  async complete(history: Message[], _tools: unknown, systemPrompt = ''): Promise<MessagePart[]> {
     const data = await requestJson<{ message: { content: string } }>(this.fetch, joinUrl(this.baseUrl, '/api/chat'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ model: this.name, messages: withSystem(instructions, toChatTurns(history)), stream: false }),
+      body: JSON.stringify({ model: this.name, messages: withSystem(systemPrompt, toChatTurns(history)), stream: false }),
     })
     return [new MessagePart('text', data.message.content)]
   }

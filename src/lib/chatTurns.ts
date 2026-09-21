@@ -20,10 +20,10 @@ export function toChatTurns(history: Message[]): ChatTurn[] {
 
 /** `turns` preceded by a system turn, for APIs that take the system prompt as a message. */
 export function withSystem(
-  instructions: string,
+  systemPrompt: string,
   turns: ChatTurn[],
 ): Array<ChatTurn | { role: 'system'; content: string }> {
-  return instructions ? [{ role: 'system', content: instructions }, ...turns] : turns
+  return systemPrompt ? [{ role: 'system', content: systemPrompt }, ...turns] : turns
 }
 
 function partText(part: MessagePart): string {
