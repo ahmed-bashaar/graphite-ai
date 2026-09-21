@@ -1,10 +1,13 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useId, useState } from 'react'
-import { useParams } from 'react-router'
+import { useNavigate, useParams } from 'react-router'
+import { ConfirmDelete } from '../components/ConfirmDelete.tsx'
+import { EditableTitle } from '../components/EditableTitle.tsx'
 import { MermaidSvg } from '../components/MermaidSvg.tsx'
 import { useMermaid } from '../components/useMermaid.ts'
 import { db, type DiagramRecord } from '../db.ts'
-import { diagramTypeLabel } from '../lib/index.ts'
+import { diagramTypeLabel, retitle } from '../lib/index.ts'
+import { deleteDiagram } from '../mutations.ts'
 import { NotFound } from './NotFound.tsx'
 
 export function DiagramPage() {
@@ -26,6 +29,12 @@ function DiagramView({ diagram }: { diagram: DiagramRecord }) {
   const shown = draft ?? diagram.source
   const result = useMermaid(shown)
   const captionId = useId()
+  const navigate = useNavigate()
+
+  // The agent identifies diagrams by their Mermaid title, so keep it in sync.
+  async function rename(name: string) {
+    await db.diagrams.update(diagram.id, { name, source: retitle(diagram.source, name) })
+  }
 
   async function save() {
     if (draft === null) return
@@ -37,13 +46,19 @@ function DiagramView({ diagram }: { diagram: DiagramRecord }) {
     <div className="h-full overflow-auto p-6">
       <figure aria-labelledby={captionId} className="mx-auto flex max-w-5xl flex-col gap-4">
         <div className="flex flex-wrap items-center gap-3">
-          <figcaption id={captionId} className="text-lg font-medium text-zinc-900 dark:text-zinc-50">
-            {diagram.name}
-          </figcaption>
+          <EditableTitle
+            as="h2"
+            id={captionId}
+            value={diagram.name}
+            noun="diagram"
+            fieldLabel="Diagram name"
+            onSave={rename}
+            className="text-lg font-medium text-zinc-900 dark:text-zinc-50"
+          />
           <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
             {diagramTypeLabel(diagram.type)}
           </span>
-          <div className="ml-auto flex gap-2">
+          <div className="ml-auto flex items-center gap-2">
             {!editing && (
               <button type="button" onClick={() => setDraft(diagram.source)} className={button}>
                 Edit source
@@ -58,6 +73,13 @@ function DiagramView({ diagram }: { diagram: DiagramRecord }) {
                 Download SVG
               </a>
             )}
+            <ConfirmDelete
+              noun="diagram"
+              onConfirm={async () => {
+                await deleteDiagram(diagram.id)
+                navigate(`/projects/${diagram.projectId}`)
+              }}
+            />
           </div>
         </div>
 

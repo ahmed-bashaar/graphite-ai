@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { diagramTypeLabel, diagramTypeOf, parseReply } from './parseReply.ts'
+import { diagramTypeLabel, diagramTypeOf, parseReply, retitle } from './parseReply.ts'
 
 const titled = (title: string, body: string) => `---\ntitle: ${title}\n---\n${body}`
 
@@ -48,6 +48,27 @@ describe('diagramTypeOf', () => {
     ['mindmap', 'mermaid'],
   ])('%s is a %s diagram', (header, type) => {
     expect(diagramTypeOf(titled('X', `%% comment\n${header}\n  a`))).toBe(type)
+  })
+})
+
+describe('retitle', () => {
+  it('replaces the frontmatter title', () => {
+    expect(retitle('---\ntitle: Old\n---\nclassDiagram', 'New')).toBe('---\ntitle: New\n---\nclassDiagram')
+  })
+
+  it('adds a title to frontmatter that has none', () => {
+    expect(retitle('---\nconfig:\n  look: handDrawn\n---\nclassDiagram', 'New')).toBe(
+      '---\ntitle: New\nconfig:\n  look: handDrawn\n---\nclassDiagram',
+    )
+  })
+
+  it('adds frontmatter when there is none', () => {
+    expect(retitle('classDiagram', 'New')).toBe('---\ntitle: New\n---\nclassDiagram')
+  })
+
+  it('keeps the new title parseable', () => {
+    const source = retitle('classDiagram', 'Loans: v2')
+    expect(parseReply('```mermaid\n' + source + '\n```')[0]).toMatchObject({ name: 'Loans: v2' })
   })
 })
 

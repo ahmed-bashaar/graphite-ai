@@ -1,15 +1,18 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { motion } from 'motion/react'
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { Link, useParams } from 'react-router'
+import { Link, useNavigate, useParams } from 'react-router'
 import { NoProviderError, reply, sendMessage } from '../agent/conversation.ts'
 import { Avatar } from '../components/Avatar.tsx'
+import { ConfirmDelete } from '../components/ConfirmDelete.tsx'
+import { EditableTitle } from '../components/EditableTitle.tsx'
 import { MermaidSvg } from '../components/MermaidSvg.tsx'
 import { RenderedHtml } from '../components/RenderedHtml.tsx'
 import { markdownStyles } from '../components/markdownStyles.ts'
 import { useMermaid } from '../components/useMermaid.ts'
 import { db, type MessagePartRecord, type MessageRecord } from '../db.ts'
 import { diagramTypeLabel, MessagePart } from '../lib/index.ts'
+import { deleteChat } from '../mutations.ts'
 import { NotFound } from './NotFound.tsx'
 
 export function ChatPage() {
@@ -34,6 +37,7 @@ function Chat({ chatSessionId }: { chatSessionId: number }) {
   const providers = useLiveQuery(() => db.providers.toArray())
   const provider = providers?.find((p) => p.id === session?.providerId) ?? providers?.[0]
 
+  const navigate = useNavigate()
   const [text, setText] = useState('')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<unknown>(null)
@@ -97,6 +101,28 @@ function Chat({ chatSessionId }: { chatSessionId: number }) {
 
   return (
     <div className="flex h-full flex-col">
+      {session && (
+        <div className="flex h-11 shrink-0 items-center gap-2 border-b border-zinc-100 px-6 dark:border-zinc-900">
+          <EditableTitle
+            value={session.title}
+            noun="chat"
+            fieldLabel="Chat title"
+            onSave={async (title) => {
+              await db.chatSessions.update(chatSessionId, { title })
+            }}
+            className="text-sm text-zinc-600 dark:text-zinc-300"
+          />
+          <div className="ml-auto">
+            <ConfirmDelete
+              noun="chat"
+              onConfirm={async () => {
+                await deleteChat(chatSessionId)
+                navigate(`/projects/${session.projectId}`)
+              }}
+            />
+          </div>
+        </div>
+      )}
       <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
         <div ref={content} className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
           {messages?.length === 0 && (

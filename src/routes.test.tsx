@@ -279,4 +279,90 @@ describe('routes', () => {
       expect(await screen.findByText(/diagram not found/i)).toBeInTheDocument()
     })
   })
+
+  describe('renaming and deleting', () => {
+    async function rename(label: RegExp, field: RegExp, value: string) {
+      await userEvent.click(await screen.findByRole('button', { name: label }))
+      const input = screen.getByRole('textbox', { name: field })
+      await userEvent.clear(input)
+      await userEvent.type(input, `${value}{Enter}`)
+    }
+
+    it('renames the project from the top bar', async () => {
+      const projectId = await seedProject()
+      renderAt(`/projects/${projectId}`)
+
+      await rename(/rename project/i, /project name/i, 'Library v2')
+
+      await vi.waitFor(async () => expect((await db.projects.get(projectId))?.name).toBe('Library v2'))
+      expect(await within(screen.getByRole('banner')).findByText('Library v2')).toBeInTheDocument()
+    })
+
+    it('cancels a rename with Escape', async () => {
+      const projectId = await seedProject()
+      renderAt(`/projects/${projectId}`)
+
+      await userEvent.click(await screen.findByRole('button', { name: /rename project/i }))
+      await userEvent.type(screen.getByRole('textbox', { name: /project name/i }), ' changed{Escape}')
+
+      expect(screen.queryByRole('textbox', { name: /project name/i })).toBeNull()
+      expect((await db.projects.get(projectId))?.name).toBe('Library system')
+    })
+
+    it('deletes the project after confirmation and returns to the projects page', async () => {
+      const { projectId } = await seedChat()
+      const router = renderAt(`/projects/${projectId}`)
+
+      await userEvent.click(await screen.findByRole('button', { name: /delete project/i }))
+      expect(await db.projects.count()).toBe(1)
+      await userEvent.click(screen.getByRole('button', { name: /yes, delete/i }))
+
+      await expectPath(router, '/')
+      expect(await db.projects.count()).toBe(0)
+      expect(await db.chatSessions.count()).toBe(0)
+    })
+
+    it('keeps the project when the delete is cancelled', async () => {
+      const projectId = await seedProject()
+      renderAt(`/projects/${projectId}`)
+
+      await userEvent.click(await screen.findByRole('button', { name: /delete project/i }))
+      await userEvent.click(screen.getByRole('button', { name: /cancel/i }))
+
+      expect(screen.queryByRole('button', { name: /yes, delete/i })).toBeNull()
+      expect(await db.projects.count()).toBe(1)
+    })
+
+    it('renames and deletes a chat', async () => {
+      const { projectId, chatSessionId } = await seedChat()
+      const router = renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+
+      await rename(/rename chat/i, /chat title/i, 'Lending')
+      const sidebar = screen.getByRole('navigation', { name: /project/i })
+      expect(await within(sidebar).findByRole('link', { name: 'Lending' })).toBeInTheDocument()
+
+      await userEvent.click(screen.getByRole('button', { name: /delete chat/i }))
+      await userEvent.click(screen.getByRole('button', { name: /yes, delete/i }))
+
+      await expectPath(router, `/projects/${projectId}`)
+      expect(await db.chatSessions.count()).toBe(0)
+    })
+
+    it('renames and deletes a diagram', async () => {
+      const projectId = await seedProject()
+      const diagramId = await db.diagrams.add({ projectId, type: 'class', name: 'Domain', source: 'classDiagram' })
+      const router = renderAt(`/projects/${projectId}/diagrams/${diagramId}`)
+
+      await rename(/rename diagram/i, /diagram name/i, 'Core domain')
+      expect(await screen.findByRole('figure', { name: 'Core domain' })).toBeInTheDocument()
+      // The agent matches diagrams by Mermaid title, so the source follows the rename.
+      expect((await db.diagrams.get(diagramId))?.source).toBe('---\ntitle: Core domain\n---\nclassDiagram')
+
+      await userEvent.click(screen.getByRole('button', { name: /delete diagram/i }))
+      await userEvent.click(screen.getByRole('button', { name: /yes, delete/i }))
+
+      await expectPath(router, `/projects/${projectId}`)
+      expect(await db.diagrams.count()).toBe(0)
+    })
+  })
 })

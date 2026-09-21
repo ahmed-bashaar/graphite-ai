@@ -71,6 +71,21 @@ export function diagramTypeOf(source: string): DiagramType {
   return 'mermaid'
 }
 
+/** `source` with its frontmatter `title:` set to `title`, adding frontmatter if needed. */
+export function retitle(source: string, title: string): string {
+  // Quote titles YAML would misread (e.g. "Loans: v2").
+  const line = `title: ${/[:#'"[\]{}]|^\s|\s$/.test(title) ? JSON.stringify(title) : title}`
+  const lines = source.split('\n')
+  const { frontmatter } = splitFrontmatter(source)
+  if (lines[0]?.trim() !== '---' || lines.findIndex((l, i) => i > 0 && l.trim() === '---') === -1) {
+    return `---\n${line}\n---\n${source}`
+  }
+  const titleIndex = frontmatter.findIndex((l) => /^title:/.test(l))
+  if (titleIndex === -1) lines.splice(1, 0, line)
+  else lines[titleIndex + 1] = line
+  return lines.join('\n')
+}
+
 function titleOf(source: string): string | undefined {
   const frontmatter = splitFrontmatter(source).frontmatter
   const match = frontmatter.map((line) => /^title:\s*(.+)$/.exec(line)).find(Boolean)

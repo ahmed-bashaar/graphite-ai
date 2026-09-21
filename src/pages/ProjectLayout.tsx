@@ -1,8 +1,11 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { NavLink, Outlet, useNavigate, useParams } from 'react-router'
 import { Brand } from '../components/Brand.tsx'
+import { ConfirmDelete } from '../components/ConfirmDelete.tsx'
+import { EditableTitle } from '../components/EditableTitle.tsx'
 import { SettingsIcon } from '../components/SettingsIcon.tsx'
 import { db } from '../db.ts'
+import { deleteProject } from '../mutations.ts'
 import { NEW_CHAT_TITLE } from '../agent/chatTitle.ts'
 import { NotFound } from './NotFound.tsx'
 
@@ -80,8 +83,31 @@ export function ProjectLayout() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center border-b border-zinc-200 px-6 dark:border-zinc-800">
-          <h1 className="truncate font-medium text-zinc-900 dark:text-zinc-50">{project?.name}</h1>
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-zinc-200 px-6 dark:border-zinc-800">
+          {project && (
+            <>
+              <EditableTitle
+                as="h1"
+                value={project.name}
+                noun="project"
+                fieldLabel="Project name"
+                onSave={async (name) => {
+                  await db.projects.update(projectId, { name })
+                }}
+                className="font-medium text-zinc-900 dark:text-zinc-50"
+              />
+              <div className="ml-auto">
+                <ConfirmDelete
+                  noun="project"
+                  detail="and all its chats and diagrams"
+                  onConfirm={async () => {
+                    await deleteProject(projectId)
+                    navigate('/')
+                  }}
+                />
+              </div>
+            </>
+          )}
         </header>
         <main className="min-h-0 flex-1">
           <Outlet />

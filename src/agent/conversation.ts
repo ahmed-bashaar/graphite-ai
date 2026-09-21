@@ -99,6 +99,8 @@ async function saveReply(session: ChatSessionRecord, provider: ProviderRecord, a
   if (segments.length === 0) throw new Error('The model returned an empty reply.')
 
   await db.transaction('rw', db.messages, db.diagrams, db.chatSessions, async () => {
+    // The chat may have been deleted while the model was answering.
+    if (!(await db.chatSessions.get(session.id))) return
     const parts: MessagePartRecord[] = []
     for (const segment of segments) {
       if (segment.kind === 'text') parts.push({ type: 'text', content: segment.content })

@@ -146,6 +146,23 @@ describe('conversation', () => {
     expect(stored.map((m) => m.sender)).toEqual(['user', AGENT_NAME])
   })
 
+  it('drops the reply if the chat was deleted while waiting for it', async () => {
+    const { chatSessionId } = await seed()
+    let answer: (value: Response) => void = () => {}
+    const fetch = vi.fn<FetchLike>(() => new Promise((resolve) => (answer = resolve)))
+    vi.stubGlobal('fetch', fetch)
+
+    const sending = sendMessage(chatSessionId, 'hello')
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalled())
+    await db.messages.where({ chatSessionId }).delete()
+    await db.chatSessions.delete(chatSessionId)
+    answer(Response.json({ message: { content: mermaid('Orphan', 'classDiagram') } }))
+    await sending
+
+    expect(await db.messages.count()).toBe(0)
+    expect(await db.diagrams.count()).toBe(0)
+  })
+
   it('does nothing when the last message is already answered', async () => {
     const { chatSessionId } = await seed()
     const fetch = ollamaReplies('first')
