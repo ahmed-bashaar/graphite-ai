@@ -31,6 +31,7 @@ npm run preview   # serve the production build
 - Globals are **off**: import `describe`/`it`/`expect`/`vi` from `vitest`. The setup file registers jest-dom matchers and calls Testing Library's `cleanup` after each test.
 - The setup file also imports `fake-indexeddb/auto`, so Dexie runs in memory during tests. Reset state between tests with `await db.delete(); await db.open()` (see `src/db.test.ts`).
 - Use `@testing-library/react` plus `@testing-library/user-event` for component tests.
+- `src/lib/` tests use a stub `LlmModel` subclass (see `ChatSession.test.ts`). Agent replies are async, so wait with `vi.waitFor(() => expect(session.messages).toHaveLength(n))`.
 - Test files are under `src/`, so `tsc -b` (and therefore `npm run build`) type-checks them too.
 
 ## Tooling notes
