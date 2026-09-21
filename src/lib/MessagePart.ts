@@ -1,3 +1,4 @@
+import { renderMarkdown } from './markdown.ts'
 import { escapeHtml, type Renderable } from './Renderable.ts'
 
 export type MessagePartType = 'text' | 'code' | 'diagram-reference'
@@ -16,7 +17,7 @@ export class MessagePart implements Renderable {
       case 'code':
         return `<pre><code>${escapeHtml(this.content)}</code></pre>`
       default:
-        return `<p>${escapeHtml(this.content).replace(/\n/g, '<br>')}</p>`
+        return renderMarkdown(this.content)
     }
   }
 }

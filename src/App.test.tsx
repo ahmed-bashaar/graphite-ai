@@ -1,13 +1,10 @@
 import { render, screen } from '@testing-library/react'
-import { userEvent } from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import App from './App.tsx'
 
 describe('App', () => {
-  it('increments the counter on click', async () => {
+  it('opens on the projects page', () => {
     render(<App />)
-    const button = screen.getByRole('button', { name: /count is 0/i })
-    await userEvent.click(button)
-    expect(button).toHaveTextContent('Count is 1')
+    expect(screen.getByRole('heading', { name: /projects/i })).toBeInTheDocument()
   })
 })

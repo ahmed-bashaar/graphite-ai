@@ -2,9 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Goal
+
+The goal of this project is to build an AI agent that creates UML diagrams. The agent is called **GraphiteAI**. Users describe a system in a chat and GraphiteAI answers with UML diagrams.
+
 ## Project state
 
-Graphite AI is at an early stage: the UI in `src/App.tsx` is still the Vite `react-ts` template (React 19, TypeScript ~6, Vite 8), with Tailwind, Motion, Dexie, and Vitest wired in but not yet used by real features. The domain model from the UML class diagram in `docs/uml/` is implemented in `src/lib/` as framework-free TypeScript (no React imports), re-exported from `src/lib/index.ts`. There is no concrete LLM provider yet. Treat the UML as the spec when extending it.
+Graphite AI is at an early stage (React 19, TypeScript ~6, Vite 8, Tailwind, Motion, Dexie, React Router, Vitest). The front-end shell is built (see "Front-end" below): users can create projects, open chat sessions and send messages, and view diagrams. In Settings they can configure LLM providers (Anthropic, Ollama, OpenAI-compatible). Sending a chat message gets a reply from the chat's provider. Mermaid blocks in replies are saved as project diagrams, drawn as SVG with Mermaid in the chat and on the diagram page, where the source can be edited and the SVG downloaded. The domain model from the UML class diagram in `docs/uml/` is implemented in `src/lib/` as framework-free TypeScript (no React imports), re-exported from `src/lib/index.ts`. Treat the UML as the spec when extending it.
 
 ## Development workflow
 
@@ -28,7 +32,11 @@ npm run preview   # serve the production build
 
 - **Tailwind CSS v4** via the `@tailwindcss/vite` plugin — there is no `tailwind.config.js` or PostCSS config. `src/index.css` starts with `@import "tailwindcss";`; customize with `@theme` blocks in CSS, not a JS config. Preflight is active, so the leftover template styles in `index.css`/`App.css` sit on top of Tailwind's reset.
 - **Motion** (formerly Framer Motion) — import from `motion/react` (not `framer-motion`). `src/main.tsx` wraps the app in `<MotionConfig reducedMotion="user">`, so animations respect the OS reduced-motion setting.
-- **Dexie** (IndexedDB) — the single database instance lives in `src/db.ts` as `db`, typed with `EntityTable`. Tables mirror the UML: `projects`, `chatSessions`, `messages`, `diagrams`. MessageParts are composed by their Message and stored inline in `messages.parts` (a `type`-discriminated union), not in their own table. The `stores()` strings list only the primary key and indexed fields. To change the schema, add a new `db.version(n + 1).stores(...)`; don't edit the existing version.
+- **Dexie** (IndexedDB) — the single database instance lives in `src/db.ts` as `db`, typed with `EntityTable`. Tables mirror the UML: `projects`, `chatSessions` (`title`, `draft`, optional `providerId`), `messages`, `diagrams` (`type`, `name`, `source`, matching `Diagram` in `src/lib`). MessageParts are composed by their Message and stored inline in `messages.parts` (a `type`-discriminated union of `text`, `code` and `diagram-reference`), not in their own table. The `stores()` strings list only the primary key and indexed fields. Adding non-indexed fields needs no version bump. To change indexes, add a new `db.version(n + 1).stores(...)`; don't edit the existing version.
+- **dexie-react-hooks** — components read the database with `useLiveQuery`, so the UI re-renders when any write lands (no manual refetching). A live query returns `undefined` while loading. Pages that must tell "loading" from "missing" return `(await table.get(id)) ?? null`, where `null` means not found.
+- **React Router v8** (`react-router` package; there's no `react-router-dom`). Data-router style: the route table is `routes` in `src/routes.tsx`. `App.tsx` passes it to `createBrowserRouter`, and tests pass it to `createMemoryRouter`. Import everything, including `RouterProvider`, from `react-router`.
+- **Mermaid** (v12): draws diagrams. Only `src/components/renderMermaid.ts` touches it. It lazy-loads the library (separate chunk), uses `securityLevel: 'strict'` (sanitized SVG, safe to inject), and picks a dark/neutral theme from `prefers-color-scheme`. Components use `useMermaid(source)` (`loading` / `done` + `svg` / `error`) and `<MermaidSvg>` to show the result, falling back to the error and source. jsdom can't run Mermaid, so `src/test/setup.ts` mocks `renderMermaid` globally with an SVG that echoes the source (`data-testid="mermaid-svg"`); override it per test with `vi.mocked(renderMermaid)`. `package.json` has an `overrides` entry forcing `lodash-es` to `^4.18.1`, because Mermaid 12's dependencies (chevrotain, dagre-d3-es) pin a version with security advisories. Remove the override once Mermaid ships patched dependencies (`npm ls lodash-es`).
+- **@anthropic-ai/sdk**: `AnthropicProvider` uses the official SDK (not raw fetch), with `dangerouslyAllowBrowser: true` because the app has no backend and users bring their own key. Ollama and OpenAI-compatible providers use plain `fetch` through `src/lib/http.ts` (`requestJson`, `joinUrl`). Before touching Claude API code, load the `claude-api` skill; model IDs, beta headers and parameters change often.
 
 ## Testing
 
@@ -36,6 +44,8 @@ npm run preview   # serve the production build
 - Globals are **off**: import `describe`/`it`/`expect`/`vi` from `vitest`. The setup file registers jest-dom matchers and calls Testing Library's `cleanup` after each test.
 - The setup file also imports `fake-indexeddb/auto`, so Dexie runs in memory during tests. Reset state between tests with `await db.delete(); await db.open()` (see `src/db.test.ts`).
 - Use `@testing-library/react` plus `@testing-library/user-event` for component tests.
+- Agent tests (`src/agent/conversation.test.ts`) seed an Ollama provider and stub `fetch` to act as its server; type the mocks with `vi.fn<FetchLike>` so `mock.calls` type-checks.
+- Page and route tests live in `src/routes.test.tsx` and `src/settings.test.tsx`. They use `renderAt(path)` and `expectPath(router, path)` from `src/test/router.tsx`, and seed Dexie directly. After any navigation (`router.navigate`, or a click followed by `expectPath`), use `findBy*` for the next query, never `getBy*`: the URL changes before React commits the new page, and the old page may still be mounted. Provider tests (`src/lib/providers.test.ts`) inject a fake `fetch` and never hit the network. UI tests that need network stub `fetch` with `vi.stubGlobal` and restore it with `vi.unstubAllGlobals()`. Reset the db in `beforeEach`, not `afterEach`: an `afterEach` reset runs before Testing Library's cleanup, while live queries are still mounted.
 - `src/lib/` tests use a stub `LlmModel` subclass (see `ChatSession.test.ts`). Agent replies are async, so wait with `vi.waitFor(() => expect(session.messages).toHaveLength(n))`.
 - Test files are under `src/`, so `tsc -b` (and therefore `npm run build`) type-checks them too.
 
@@ -51,8 +61,8 @@ npm run preview   # serve the production build
 
 - **Project** composes **ChatSession**s and **Diagram**s.
 - **ChatSession** holds a `draft` and composes **Message**s (`sender`, `on`, `isSent`); each Message composes **MessagePart**s (`type`, `content`). **DiagramReference** is a MessagePart subtype that points at a Diagram.
-- **AiAgent** (`respond(message)`) is attached to a ChatSession, aggregates one **LlmModel** and a set of **AgenticTool**s (`name`, `description`, `call(args)`).
-- **LlmProvider** (`provideModel(args)`) composes LlmModels. LlmProvider and AgenticTool implement **Parametered** (`exposeParameters()`), i.e. they describe their own configurable arguments.
+- **AiAgent** (`name`, `systemPrompt`, `respond(message)`) is attached to a ChatSession, aggregates one **LlmModel** and a set of **AgenticTool**s (`name`, `description`, `call(args)`).
+- **LlmProvider** (`name`, `provideModel(args)`, `listModels()`) composes LlmModels. LlmProvider and AgenticTool implement **Parametered** (`exposeParameters()`), i.e. they describe their own configurable arguments.
 - **Renderable** (`render()`) is implemented by Message, MessagePart, and Diagram. Its purpose: convert ASCII-based formats the LLM produces (JSON, XML, Markdown) into browser-native output (HTML, CSS, SVG).
 - **EventEmitter** (`on`/`off`/protected `emit`) drives the chat loop: the ChatSession depends on it, and the agent learns when to respond via emitted events rather than direct calls, so multiple messages can go back and forth asynchronously.
 
@@ -63,6 +73,55 @@ One file per class/interface, named after it. Places where the code intentionall
 - `ChatSession` **extends** `EventEmitter<ChatSessionEvents>` (events: `message`, `draft`, `error`); a subclass is the only way to call the protected `emit`.
 - UML `draft(message)` is `setDraft(message)`, because TS can't have a property and a method named `draft`. `send(message = this.draft)` marks the message as sent, stamps `on`, appends it and emits `message`.
 - `AiAgent.attach(session)` subscribes to `message` and replies via `session.send(reply)`, ignoring its own messages. `ChatSession.setAgent()` handles attach/detach. Agent failures surface as the session's `error` event.
-- `LlmModel` and `LlmProvider` are abstract. `LlmModel.complete(history, tools)` is the extension point where a provider's API call and tool-calling loop live. It is not in the UML.
-- `AgenticTool` is concrete, built from `{ name, description, parameters, handler }`, and `call()` validates required args. Parameter shape: `Parameter` in `Parametered.ts`.
-- `render()` returns an HTML string. Always pass LLM-produced text through `escapeHtml` (`Renderable.ts`). Rendering is still a placeholder: `MessagePart` handles `text`/`code` only (no Markdown yet), and `Diagram` (which adds a `source` field) shows its escaped source instead of an SVG.
+- `LlmModel` and `LlmProvider` are abstract. `LlmModel.complete(history, tools, systemPrompt?)` is the extension point where a provider's API call and tool-calling loop live. It is not in the UML. `AiAgent.systemPrompt` (4th constructor argument) is passed on every call.
+- `LlmProvider.listModels(args)` takes the same args as `provideModel` (the UML shows no parameters). Settings uses it to suggest model names. Its constructor takes `{ fetch }` so tests can inject a stub. `withDefaults(args)` fills in parameter defaults, and `requireArgs(args)` also throws on missing required settings; `provideModel` uses `requireArgs`.
+- Concrete providers: `AnthropicProvider`, `OllamaProvider`, `OpenAiCompatibleProvider` (OpenAI, OpenRouter, Groq, LM Studio, ...). Each file also holds its private `LlmModel` subclass. `toChatTurns(history)` (`chatTurns.ts`) maps Messages to `{ role, content }` turns: sender `'user'` is the user, anyone else is the assistant. `DiagramReference` parts become fenced ```` ```mermaid ```` source, so the model sees (and can revise) earlier diagrams. `withSystem()` prepends a system turn for APIs that take it as a message. Tools are not sent to any provider yet.
+- `retitle(source, title)` sets or adds the Mermaid frontmatter title (quoting it when YAML needs that). Renaming a diagram in the UI uses it, so the agent, which matches diagrams by title, keeps finding the renamed diagram.
+- `parseReply(text)` (`parseReply.ts`) splits a Markdown reply into `text`, `code` and `diagram` segments. A ```` ```mermaid ```` block is a diagram named by its frontmatter `title:`; `diagramTypeOf()` maps the Mermaid header keyword to a UML type (`class`, `sequence`, `state`, `er`, `activity`, else `mermaid`).
+- The Anthropic model sends `fallbacks: "default"` (beta `server-side-fallback-2026-07-01`) only for `claude-opus-5` and `claude-fable-5-1`, and throws on `stop_reason: "refusal"`. Default model: `claude-opus-5`.
+- `AgenticTool` is concrete, built from `{ name, description, parameters, handler }`, and `call()` validates required args. Parameter shape: `Parameter` in `Parametered.ts`, which adds optional `secret` (mask it in UIs) and `default` to the UML.
+- `render()` returns an HTML string. Always pass LLM-produced text through `escapeHtml` (`Renderable.ts`). `MessagePart` renders `text` as Markdown with `renderMarkdown()` (`markdown.ts`: a small subset covering paragraphs, headings, lists, quotes, rules, tables, emphasis, inline code and http(s)/mailto links; everything is escaped first) and `code` as an escaped `<pre>`, and `Diagram.render()` (which adds a `source` field) returns its escaped source, because Mermaid rendering is async and lives in the UI layer (`renderMermaid`).
+
+## Agent (`src/agent/`)
+
+The app-side glue between Dexie, providers and the `src/lib` agent. It is React-free.
+
+- `systemPrompt.ts`: `AGENT_NAME` (`'GraphiteAI'`, the sender of agent messages) and `SYSTEM_PROMPT`. GraphiteAI draws diagrams as titled Mermaid blocks, so any model can produce them without tool calling. A diagram output again with the same title (case-insensitive) replaces the stored one.
+- `conversation.ts`: `sendMessage(chatSessionId, text)` stores the user message (renaming a `NEW_CHAT_TITLE` chat after it) and then calls `reply(chatSessionId)`. `reply` answers only an unanswered last user message. It loads the history and project diagrams, runs them through a `ChatSession` + `AiAgent` (the agent reacts to the session's `message` event, following the UML), and saves the reply with `parseReply`: diagrams are upserted by name into the project and referenced from the message. It remembers the provider on the chat (`providerId`). With no provider configured it throws `NoProviderError`. Provider errors propagate to the caller.
+- `chatTitle.ts`: `NEW_CHAT_TITLE`, `titleFrom()`.
+- If the chat is deleted while a reply is in flight, the reply is dropped (checked inside the save transaction).
+
+Cascading deletes live in `src/mutations.ts`: `deleteProject` (chats, messages, diagrams), `deleteChat` (messages; diagrams stay in the project) and `deleteDiagram` (messages keep the reference and show "Diagram deleted").
+
+## Front-end (`src/routes.tsx`, `src/pages/`, `src/components/`)
+
+The main user journey starts on the projects page. Inside a project, the user works with chat sessions and diagrams. The layout follows the user's wireframe: a sidebar on the left, a top bar, and the chat in the middle, with agent messages on the left, user messages on the right, and the input bar at the bottom.
+
+| Path | Component | What it shows |
+| --- | --- | --- |
+| `/` | `ProjectsPage` | Project list and create form; creating a project opens it |
+| `/projects/:projectId` | `ProjectLayout` | Shell: sidebar (brand link to `/`, "New chat", chat and diagram `NavLink`s) and a top bar with the project name, around an `<Outlet>` |
+| ↳ index | `ProjectHome` | Empty-state hint |
+| ↳ `chats/:chatId` | `ChatPage` → `Chat` (keyed by chat id) | Messages ordered by the `[chatSessionId+on]` index. Replies show a "thinking" status (`role="status"`), errors show an alert with Retry (`reply()`), and an unanswered last message also offers Retry. Diagram parts render as cards with a live Mermaid preview, linking to the diagram. The composer has a Model picker (the chat's provider; defaults to the first provider) or an "Add a provider" link when none exist. Enter sends, Shift+Enter adds a newline |
+| ↳ `diagrams/:diagramId` | `DiagramPage` → `DiagramView` | The Mermaid SVG under the diagram name and type label (`diagramTypeLabel`). "Edit source" opens a textarea with a live preview (Save writes the source). "Download SVG" is a `data:` link |
+| `/settings` | `SettingsLayout` → `SettingsPage` | Configured providers, and cards for adding each provider kind |
+| ↳ `providers/new/:kind`, `providers/:providerId` | `ProviderPage` | Add or edit form built from the provider's `exposeParameters()`: secret → password input, and a "Load models" button that calls `listModels` and fills a `<datalist>`. Save validates with `provideModel()`. Edit mode also has Remove |
+| `*` | `NotFound` | Also used for a missing project, chat, diagram, or provider |
+
+- The provider kinds a user can configure are listed in `src/providers.ts` (`providerKinds`: label, description, factory). To add a provider, write the `LlmProvider` in `src/lib` and register it there. Configured providers live in the Dexie `providers` table (schema version 2): `{ kind, name, args }`.
+- Renaming and deleting: `EditableTitle` (pencil button "Rename {noun}"; Enter/blur saves, Escape cancels) and `ConfirmDelete` (trash button "Delete {noun}", then an inline "Yes, delete"/"Cancel"; no browser dialogs). Projects are renamed and deleted from the project top bar, chats from a slim header in `ChatPage`, and diagrams from the `DiagramPage` toolbar. After a delete, the page navigates to the parent.
+- `AppHeader` (brand + Settings link) tops the projects and settings pages. Inside a project, Settings is at the bottom of the sidebar.
+- Messages from sender `'user'` are the user's. Any other sender is treated as the agent (`data-sender="agent"`).
+- Style `renderMarkdown` output with `markdownStyles` (`components/markdownStyles.ts`), applied to the text part's `RenderedHtml` only, so it doesn't leak into diagram cards. `ChatPage` stays scrolled to the bottom while async content (diagram previews) grows, via a `ResizeObserver` that is skipped in jsdom, unless the user has scrolled up.
+- Render LLM content through `src/lib` Renderables with `<RenderedHtml of={...}>`, never as raw strings. The exception is diagram SVGs, which come from Mermaid's strict mode (see Libraries). `MessagePart` and `Diagram` escape their input. Style the generated markup with Tailwind arbitrary child variants (`[&_pre]:...`).
+- Styling uses Tailwind only, with a zinc ("graphite") palette. Dark mode uses `dark:` variants, which follow the OS setting. There are no component CSS files; `src/index.css` holds only the Tailwind import and base styles. The logo mark is `components/Logo.tsx`, and `public/favicon.svg` is the same mark.
+
+## Future scope
+
+Not built yet; pick these up in later sessions (TDD as usual):
+
+- **Streaming replies**: show the agent's answer as it's generated instead of after a "thinking" wait. All three providers support streaming (Anthropic SDK `messages.stream`, Ollama `stream: true`, OpenAI-style SSE); `LlmModel.complete` would need a streaming variant, and Mermaid blocks should only be drawn once their fence closes.
+- **Diagram version history**: keep earlier versions when the agent (or a source edit) replaces a diagram, with a way to view, compare and restore them. Today a same-titled diagram overwrites the old source.
+- **The circle button in the chat input bar** from the wireframe (left of the message field): purpose still to be decided with the user (e.g. attachments or inserting a diagram reference).
+- **Mobile / narrow layout**: the project sidebar is a fixed 16rem column; it needs a collapsible drawer and responsive chat/diagram pages.
+

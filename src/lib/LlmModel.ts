@@ -11,7 +11,8 @@ export abstract class LlmModel {
 
   /**
    * Produces the next reply to `history`. Implementations own the provider's
-   * API call and any tool-calling loop over `tools`.
+   * API call and any tool-calling loop over `tools`. `systemPrompt` is the
+   * system prompt; empty means none.
    */
-  abstract complete(history: Message[], tools: AgenticTool[]): Promise<MessagePart[]>
+  abstract complete(history: Message[], tools: AgenticTool[], systemPrompt?: string): Promise<MessagePart[]>
 }
