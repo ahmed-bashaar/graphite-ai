@@ -1,15 +1,8 @@
-import { render, screen, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { createMemoryRouter, RouterProvider } from 'react-router'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from './db.ts'
-import { routes } from './routes.tsx'
-
-function renderAt(path: string) {
-  const router = createMemoryRouter(routes, { initialEntries: [path] })
-  render(<RouterProvider router={router} />)
-  return router
-}
+import { expectPath, renderAt } from './test/router.tsx'
 
 async function seedProject(name = 'Library system') {
   return db.projects.add({ name, createdAt: new Date() })
@@ -157,8 +150,3 @@ describe('routes', () => {
     })
   })
 })
-
-function expectPath(router: ReturnType<typeof createMemoryRouter>, path: string) {
-  // Navigation follows an async Dexie write, so poll for it.
-  return vi.waitFor(() => expect(router.state.location.pathname).toBe(path))
-}

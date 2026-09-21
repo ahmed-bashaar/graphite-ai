@@ -12,6 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.127.0",
     "dexie": "^4.4.6",
     "dexie-react-hooks": "^4.4.0",
     "motion": "^13.4.0",

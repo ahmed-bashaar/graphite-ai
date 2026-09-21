@@ -1,4 +1,6 @@
 import { Dexie, type EntityTable } from 'dexie'
+import type { Args } from './lib/index.ts'
+import type { ProviderKind } from './providers.ts'
 
 // Persisted shapes for the domain model in docs/uml/. MessageParts are
 // composed by their Message, so they are stored inline rather than in a table.
@@ -39,11 +41,20 @@ export interface DiagramRecord {
   source: string
 }
 
+/** A configured LLM provider; `args` match its `exposeParameters()`. */
+export interface ProviderRecord {
+  id: number
+  kind: ProviderKind
+  name: string
+  args: Args
+}
+
 export const db = new Dexie('graphite-ai') as Dexie & {
   projects: EntityTable<ProjectRecord, 'id'>
   chatSessions: EntityTable<ChatSessionRecord, 'id'>
   messages: EntityTable<MessageRecord, 'id'>
   diagrams: EntityTable<DiagramRecord, 'id'>
+  providers: EntityTable<ProviderRecord, 'id'>
 }
 
 // Only primary keys and queried fields are listed; bump the version and add a
@@ -53,4 +64,7 @@ db.version(1).stores({
   chatSessions: '++id, projectId',
   messages: '++id, chatSessionId, [chatSessionId+on]',
   diagrams: '++id, projectId',
+})
+db.version(2).stores({
+  providers: '++id',
 })

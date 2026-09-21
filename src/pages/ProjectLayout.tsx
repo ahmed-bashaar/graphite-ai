@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { NavLink, Outlet, useNavigate, useParams } from 'react-router'
 import { Brand } from '../components/Brand.tsx'
+import { SettingsIcon } from '../components/SettingsIcon.tsx'
 import { db } from '../db.ts'
 import { NEW_CHAT_TITLE } from './chat.ts'
 import { NotFound } from './NotFound.tsx'
@@ -71,6 +72,11 @@ export function ProjectLayout() {
             ))}
           </section>
         </nav>
+
+        <NavLink to="/settings" className={`${navItem({ isActive: false })} flex items-center gap-2`}>
+          <SettingsIcon />
+          Settings
+        </NavLink>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">

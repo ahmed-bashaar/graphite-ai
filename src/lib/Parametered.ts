@@ -5,6 +5,10 @@ export type Parameter = {
   type: ParameterType
   description?: string
   required?: boolean
+  /** Credentials: UIs should mask the value. */
+  secret?: boolean
+  /** Used when the argument is left out or blank. */
+  default?: string | number | boolean
 }
 
 export type Args = Record<string, unknown>
