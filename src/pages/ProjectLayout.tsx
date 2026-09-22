@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
+import { useEffect, useId, useState, type MouseEvent } from 'react'
 import { NavLink, Outlet, useNavigate, useParams } from 'react-router'
 import { Brand } from '../components/Brand.tsx'
 import { ConfirmDelete } from '../components/ConfirmDelete.tsx'
@@ -18,10 +19,27 @@ const navItem = ({ isActive }: { isActive: boolean }) =>
 
 const sectionHeading = 'px-3 text-xs font-medium uppercase tracking-wider text-zinc-400'
 
-/** The wireframe shell: sidebar (chats + diagrams), top bar, and the routed page. */
+/**
+ * The wireframe shell: sidebar (chats + diagrams), top bar, and the routed
+ * page. Below the md breakpoint the sidebar is a drawer opened from the top bar.
+ */
 export function ProjectLayout() {
   const projectId = Number(useParams().projectId)
   const navigate = useNavigate()
+  const [navOpen, setNavOpen] = useState(false)
+  const sidebarId = useId()
+
+  useEffect(() => {
+    if (!navOpen) return
+    const onKey = (event: KeyboardEvent) => event.key === 'Escape' && setNavOpen(false)
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [navOpen])
+
+  // Choosing a page in the drawer closes it.
+  function closeOnLink(event: MouseEvent) {
+    if ((event.target as Element).closest('a')) setNavOpen(false)
+  }
   // undefined while loading, null when the project doesn't exist.
   const project = useLiveQuery(async () => (await db.projects.get(projectId)) ?? null, [projectId])
   const sessions = useLiveQuery(
@@ -32,6 +50,7 @@ export function ProjectLayout() {
 
   async function newChat() {
     const id = await db.chatSessions.add({ projectId, title: NEW_CHAT_TITLE, draft: '' })
+    setNavOpen(false)
     navigate(`/projects/${projectId}/chats/${id}`)
   }
 
@@ -39,7 +58,16 @@ export function ProjectLayout() {
 
   return (
     <div className="flex h-svh bg-white dark:bg-zinc-950">
-      <aside className="flex w-64 shrink-0 flex-col gap-4 border-r border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900">
+      {navOpen && (
+        <div aria-hidden="true" onClick={() => setNavOpen(false)} className="fixed inset-0 z-30 bg-black/40 md:hidden" />
+      )}
+      <aside
+        id={sidebarId}
+        onClick={closeOnLink}
+        className={`fixed inset-y-0 left-0 z-40 flex w-72 max-w-[85vw] shrink-0 flex-col gap-4 border-r border-zinc-200 bg-zinc-50 p-3 transition-transform duration-200 md:static md:w-64 md:translate-x-0 dark:border-zinc-800 dark:bg-zinc-900 ${
+          navOpen ? 'translate-x-0 shadow-xl' : 'max-md:invisible -translate-x-full'
+        }`}
+      >
         <div className="px-2 pt-1">
           <Brand />
         </div>
@@ -83,7 +111,19 @@ export function ProjectLayout() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-zinc-200 px-6 dark:border-zinc-800">
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-zinc-200 px-4 md:px-6 dark:border-zinc-800">
+          <button
+            type="button"
+            aria-label="Navigation"
+            aria-expanded={navOpen}
+            aria-controls={sidebarId}
+            onClick={() => setNavOpen(!navOpen)}
+            className="-ml-1 grid size-9 shrink-0 place-items-center rounded-lg text-zinc-600 hover:bg-zinc-100 md:hidden dark:text-zinc-300 dark:hover:bg-zinc-800"
+          >
+            <svg viewBox="0 0 20 20" className="size-5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M3 5h14M3 10h14M3 15h14" strokeLinecap="round" />
+            </svg>
+          </button>
           {project && (
             <>
               <EditableTitle
@@ -96,7 +136,7 @@ export function ProjectLayout() {
                 }}
                 className="font-medium text-zinc-900 dark:text-zinc-50"
               />
-              <div className="ml-auto">
+              <div className="ml-auto shrink-0">
                 <ConfirmDelete
                   noun="project"
                   detail="and all its chats and diagrams"

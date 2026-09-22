@@ -121,6 +121,26 @@ describe('routes', () => {
       await expectPath(router, `/projects/${projectId}/chats/${session.id}`)
     })
 
+    it('opens the sidebar as a drawer from the top bar, closing it after choosing a page', async () => {
+      const projectId = await seedProject()
+      const chatSessionId = await db.chatSessions.add({ projectId, draft: '', title: 'Class model' })
+      const router = renderAt(`/projects/${projectId}`)
+
+      const toggle = await screen.findByRole('button', { name: /navigation/i })
+      expect(toggle).toHaveAttribute('aria-expanded', 'false')
+      await userEvent.click(toggle)
+      expect(toggle).toHaveAttribute('aria-expanded', 'true')
+
+      await userEvent.keyboard('{Escape}')
+      expect(toggle).toHaveAttribute('aria-expanded', 'false')
+
+      await userEvent.click(toggle)
+      const sidebar = screen.getByRole('navigation', { name: /project/i })
+      await userEvent.click(await within(sidebar).findByRole('link', { name: /class model/i }))
+      await expectPath(router, `/projects/${projectId}/chats/${chatSessionId}`)
+      expect(await screen.findByRole('button', { name: /navigation/i })).toHaveAttribute('aria-expanded', 'false')
+    })
+
     it('reports a missing project', async () => {
       renderAt('/projects/999')
       expect(await screen.findByText(/project not found/i)).toBeInTheDocument()

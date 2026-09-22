@@ -236,7 +236,7 @@ function ImageViewer({ name, src, onClose }: { name: string; src: string; onClos
       aria-modal="true"
       aria-label={name}
       onClick={(event) => event.target === event.currentTarget && onClose()}
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-black/80 p-6"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-black/80 p-4 sm:p-6"
     >
       <button
         ref={close}
