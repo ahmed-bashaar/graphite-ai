@@ -60,13 +60,15 @@ npm run preview   # serve the production build
 
 ## Architecture (from `docs/uml/`, implemented in `src/lib/`)
 
-`docs/uml/graphite-ai-uml.mdj` is a StarUML model; `docs/uml/Class.jpg` is its rendered class diagram. Update both if the design changes. `Class.jpg` is the source of truth: the `.mdj` also contains stale elements that are not on the diagram (TextRenderer, RenderableAscii, Eventful, EventListener, Referencable, MessageBlock). Don't implement those. The domain model is an AI chat app that produces diagrams:
+`docs/uml/graphite-ai-uml.mdj` is a StarUML model; `docs/uml/Class.jpg` is its rendered class diagram. Update both if the design changes. The `.mdj` also contains stale elements that are not on the diagram (TextRenderer, RenderableAscii, Eventful, EventListener, Referencable, MessageBlock, TextBlock). Don't implement those.
+
+The `.mdj` model is ahead of `Class.jpg`. It already has the agentic-loop, streaming and attachment changes: new members on AiAgent, LlmModel (`step`), LlmProvider (`learned`), AgenticTool (`inputSchema`) and ChatSession (`reportError`, `reportProgress`), plus the new ToolCall, ToolResult, ChatTurn, TurnAttachment, ModelStep, StepOptions, AgentStep, AgentProgress, AiAgentOptions, Attachment and AttachmentKind. The new classes are in the model but not yet placed on the Class diagram. Drag them in from StarUML's Model Explorer and re-export `Class.jpg`. Until then, the `.mdj` model is the reference for these elements. When editing the `.mdj` by script, keep StarUML's format (tabs, CRLF, no trailing newline) so diffs stay small, give new elements unique `_id`s, and set `_parent` refs. The domain model is an AI chat app that produces diagrams:
 
 - **Project** composes **ChatSession**s and **Diagram**s.
 - **ChatSession** holds a `draft` and composes **Message**s (`sender`, `on`, `isSent`); each Message composes **MessagePart**s (`type`, `content`). **DiagramReference** is a MessagePart subtype that points at a Diagram.
 - **AiAgent** (`name`, `systemPrompt`, `respond(message)`) is attached to a ChatSession, aggregates one **LlmModel** and a set of **AgenticTool**s (`name`, `description`, `call(args)`).
 - **LlmProvider** (`name`, `provideModel(args)`, `listModels()`) composes LlmModels. LlmProvider and AgenticTool implement **Parametered** (`exposeParameters()`), i.e. they describe their own configurable arguments.
-- **Attachment** (code addition, not yet in the UML; see `docs/uml/UML-CHANGES.txt` if present) is a MessagePart subtype for a file the user attached.
+- **Attachment** (in the `.mdj` model, not yet on `Class.jpg`) is a MessagePart subtype for a file the user attached.
 - **Renderable** (`render()`) is implemented by Message, MessagePart, and Diagram. Its purpose: convert ASCII-based formats the LLM produces (JSON, XML, Markdown) into browser-native output (HTML, CSS, SVG).
 - **EventEmitter** (`on`/`off`/protected `emit`) drives the chat loop: the ChatSession depends on it, and the agent learns when to respond via emitted events rather than direct calls, so multiple messages can go back and forth asynchronously.
 
