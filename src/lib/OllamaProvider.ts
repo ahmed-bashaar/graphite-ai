@@ -32,7 +32,8 @@ export class OllamaProvider extends LlmProvider {
 
   provideModel(args: Args): LlmModel {
     const { baseUrl, model } = this.requireArgs(args)
-    return new OllamaModel(String(model), String(baseUrl), this.fetch)
+    const support = this.learned(`${String(baseUrl)}|${String(model)}`, () => ({ tools: true }))
+    return new OllamaModel(String(model), String(baseUrl), this.fetch, support)
   }
 }
 
@@ -46,17 +47,18 @@ type ChatChunk = {
 class OllamaModel extends LlmModel {
   private baseUrl: string
   private fetch: typeof fetch
-  /** Set once the server says this model can't call tools. */
-  private toolsUnsupported = false
+  /** Shared with every model object for this server and model; `tools` turns false once the server rejects them. */
+  private support: { tools: boolean }
 
-  constructor(name: string, baseUrl: string, fetch: typeof globalThis.fetch) {
+  constructor(name: string, baseUrl: string, fetch: typeof globalThis.fetch, support: { tools: boolean }) {
     super(name)
     this.baseUrl = baseUrl
     this.fetch = fetch
+    this.support = support
   }
 
   async step(turns: ChatTurn[], tools: AgenticTool[], options: StepOptions = {}): Promise<ModelStep> {
-    const offered = this.toolsUnsupported ? [] : tools
+    const offered = this.support.tools ? tools : []
     let response: Response
     try {
       response = await this.request(turns, offered, options)
@@ -65,7 +67,7 @@ class OllamaModel extends LlmModel {
       if (offered.length === 0 || !(error instanceof Error) || !/does not support tools/i.test(error.message)) {
         throw error
       }
-      this.toolsUnsupported = true
+      this.support.tools = false
       response = await this.request(turns, [], options)
     }
 

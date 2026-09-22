@@ -6,6 +6,12 @@ export type ProviderOptions = {
   fetch?: typeof fetch
 }
 
+// One function (looked up at call time) so every provider shares what it learns about models.
+const defaultFetch: typeof fetch = (input, init) => globalThis.fetch(input, init)
+
+// What providers learned about models (e.g. "rejects tools"), per fetch so injected test fetches stay isolated.
+const learnedByFetch = new WeakMap<typeof fetch, Map<string, object>>()
+
 export abstract class LlmProvider implements Parametered {
   name: string
   models: LlmModel[] = []
@@ -13,7 +19,19 @@ export abstract class LlmProvider implements Parametered {
 
   constructor(name: string, { fetch }: ProviderOptions = {}) {
     this.name = name
-    this.fetch = fetch ?? ((input, init) => globalThis.fetch(input, init))
+    this.fetch = fetch ?? defaultFetch
+  }
+
+  /**
+   * A mutable record of what's been learned about the model at `key` (e.g.
+   * server URL + model name), shared by every model object for it, so a
+   * capability found missing in one reply isn't probed again in the next.
+   */
+  protected learned<T extends object>(key: string, initial: () => T): T {
+    let learned = learnedByFetch.get(this.fetch)
+    if (!learned) learnedByFetch.set(this.fetch, (learned = new Map()))
+    if (!learned.has(key)) learned.set(key, initial())
+    return learned.get(key) as T
   }
 
   /** Builds a model configured by `args`, as described by `exposeParameters()`. */

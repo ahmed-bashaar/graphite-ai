@@ -1,6 +1,6 @@
 import type { AgenticTool } from './AgenticTool.ts'
 import { unreadablePdfNote, type ChatTurn, type ToolCall } from './chatTurns.ts'
-import { joinUrl, readServerSentEvents, request, requestJson } from './http.ts'
+import { HttpError, joinUrl, readServerSentEvents, request, requestJson } from './http.ts'
 import { LlmModel, type ModelStep, type StepOptions } from './LlmModel.ts'
 import { LlmProvider, type ProviderOptions } from './LlmProvider.ts'
 import type { Args, Parameter } from './Parametered.ts'
@@ -43,7 +43,8 @@ export class OpenAiCompatibleProvider extends LlmProvider {
 
   provideModel(args: Args): LlmModel {
     const { baseUrl, apiKey, model } = this.requireArgs(args)
-    return new OpenAiCompatibleModel(String(model), String(baseUrl), apiKey, this.fetch)
+    const support = this.learned(`${String(baseUrl)}|${String(model)}`, (): Support => ({ tools: true, pdf: 'file' }))
+    return new OpenAiCompatibleModel(String(model), String(baseUrl), apiKey, this.fetch, support)
   }
 }
 
@@ -72,36 +73,34 @@ type WireMessage = {
 
 type Completion = { choices?: { delta?: WireMessage; message?: WireMessage }[] }
 
+/**
+ * How PDFs are sent: OpenAI's `file` part, the `image_url` data URL Gemini's
+ * endpoint expects, or not at all (a note says the model can't read them).
+ */
+type PdfFormat = 'file' | 'image_url' | 'none'
+
+const NEXT_PDF_FORMAT: Record<PdfFormat, PdfFormat | null> = { file: 'image_url', image_url: 'none', none: null }
+
+/** What a server and model accept, learned from its 400 responses and shared across replies. */
+type Support = { tools: boolean; pdf: PdfFormat }
+
 class OpenAiCompatibleModel extends LlmModel {
   private baseUrl: string
   private apiKey: unknown
   private fetch: typeof fetch
+  private support: Support
 
-  constructor(name: string, baseUrl: string, apiKey: unknown, fetch: typeof globalThis.fetch) {
+  constructor(name: string, baseUrl: string, apiKey: unknown, fetch: typeof globalThis.fetch, support: Support) {
     super(name)
     this.baseUrl = baseUrl
     this.apiKey = apiKey
     this.fetch = fetch
+    this.support = support
   }
 
   async step(turns: ChatTurn[], tools: AgenticTool[], options: StepOptions = {}): Promise<ModelStep> {
-    const { systemPrompt, onText, onThinking, signal } = options
-    const response = await request(this.fetch, joinUrl(this.baseUrl, '/chat/completions'), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', ...authHeaders(this.apiKey) },
-      signal,
-      body: JSON.stringify({
-        model: this.name,
-        messages: [...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []), ...toMessages(turns)],
-        ...(tools.length > 0 && {
-          tools: tools.map((tool) => ({
-            type: 'function',
-            function: { name: tool.name, description: tool.description, parameters: tool.inputSchema() },
-          })),
-        }),
-        stream: true,
-      }),
-    })
+    const { onText, onThinking } = options
+    const response = await this.request(turns, tools, options)
 
     let text = ''
     // Tool calls stream in pieces keyed by index: the id and name first, then the arguments JSON.
@@ -145,6 +144,44 @@ class OpenAiCompatibleModel extends LlmModel {
     // The calls exactly as received, for replay.
     return { text, toolCalls, native: wire }
   }
+
+  /**
+   * Sends the request, stepping down when the server rejects (400) what this
+   * model doesn't support: tools, then the PDF formats.
+   */
+  private async request(turns: ChatTurn[], tools: AgenticTool[], { systemPrompt, signal }: StepOptions) {
+    const hasPdf = turns.some((t) => 'attachments' in t && t.attachments?.some((a) => a.mediaType === 'application/pdf'))
+    for (;;) {
+      const offered = this.support.tools ? tools : []
+      try {
+        return await request(this.fetch, joinUrl(this.baseUrl, '/chat/completions'), {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', ...authHeaders(this.apiKey) },
+          signal,
+          body: JSON.stringify({
+            model: this.name,
+            messages: [
+              ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
+              ...toMessages(turns, this.support.pdf),
+            ],
+            ...(offered.length > 0 && {
+              tools: offered.map((tool) => ({
+                type: 'function',
+                function: { name: tool.name, description: tool.description, parameters: tool.inputSchema() },
+              })),
+            }),
+            stream: true,
+          }),
+        })
+      } catch (error) {
+        if (!(error instanceof HttpError) || error.status !== 400) throw error
+        const nextPdf = NEXT_PDF_FORMAT[this.support.pdf]
+        if (offered.length > 0 && /tool|function/i.test(error.message)) this.support.tools = false
+        else if (hasPdf && nextPdf) this.support.pdf = nextPdf
+        else throw error
+      }
+    }
+  }
 }
 
 // Malformed arguments become empty args; the tool then reports what's missing to the model.
@@ -157,7 +194,7 @@ function parseArgs(json: string): Args {
   }
 }
 
-function toMessages(turns: ChatTurn[]): Record<string, unknown>[] {
+function toMessages(turns: ChatTurn[], pdfFormat: PdfFormat): Record<string, unknown>[] {
   return turns.flatMap((turn): Record<string, unknown>[] => {
     if (turn.role === 'tool') {
       return turn.results.map((r) => ({ role: 'tool', tool_call_id: r.callId, content: r.content }))
@@ -175,15 +212,19 @@ function toMessages(turns: ChatTurn[]): Record<string, unknown>[] {
       return [{ role: 'assistant', content: turn.content, tool_calls: toolCalls }]
     }
     if ('attachments' in turn && turn.attachments?.length) {
-      const text = [turn.content, unreadablePdfNote(turn.attachments)].filter(Boolean).join('\n\n')
+      const note = pdfFormat === 'none' ? unreadablePdfNote(turn.attachments) : ''
+      const text = [turn.content, note].filter(Boolean).join('\n\n')
       return [
         {
           role: turn.role,
           content: [
             ...(text ? [{ type: 'text', text }] : []),
-            ...turn.attachments
-              .filter((a) => a.mediaType !== 'application/pdf')
-              .map((a) => ({ type: 'image_url', image_url: { url: `data:${a.mediaType};base64,${a.data}` } })),
+            ...turn.attachments.flatMap((a): Record<string, unknown>[] => {
+              const url = `data:${a.mediaType};base64,${a.data}`
+              if (a.mediaType !== 'application/pdf') return [{ type: 'image_url', image_url: { url } }]
+              if (pdfFormat === 'file') return [{ type: 'file', file: { filename: a.name, file_data: url } }]
+              return pdfFormat === 'image_url' ? [{ type: 'image_url', image_url: { url } }] : []
+            }),
           ],
         },
       ]

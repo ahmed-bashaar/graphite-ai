@@ -3,12 +3,23 @@ export function joinUrl(base: string, path: string): string {
   return base.replace(/\/+$/, '') + path
 }
 
-/** Fetches `url`; non-2xx responses throw with the status and the server's error message. */
+/** A non-2xx response. The message has the status and the server's error message. */
+export class HttpError extends Error {
+  status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = 'HttpError'
+    this.status = status
+  }
+}
+
+/** Fetches `url`; non-2xx responses throw an HttpError. */
 export async function request(fetch: typeof globalThis.fetch, url: string, init: RequestInit = {}): Promise<Response> {
   const response = await fetch(url, init)
   if (!response.ok) {
     const body: unknown = await response.json().catch(() => null)
-    throw new Error(`${response.status} ${response.statusText}`.trim() + `: ${errorMessage(body)}`)
+    throw new HttpError(response.status, `${response.status} ${response.statusText}`.trim() + `: ${errorMessage(body)}`)
   }
   return response
 }

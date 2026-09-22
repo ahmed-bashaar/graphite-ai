@@ -35,6 +35,19 @@ describe('settings', () => {
     await expectPath(router, '/settings')
   })
 
+  it('sets how many steps GraphiteAI can take per reply', async () => {
+    renderAt('/settings')
+
+    const field = await screen.findByRole('spinbutton', { name: /max steps per reply/i })
+    await vi.waitFor(() => expect(field).toHaveValue(12))
+    await userEvent.clear(field)
+    await userEvent.type(field, '5')
+    await userEvent.click(screen.getByRole('button', { name: /save agent settings/i }))
+
+    expect(await screen.findByText(/saved/i)).toBeInTheDocument()
+    expect(await db.settings.get('agent')).toMatchObject({ value: { maxSteps: 5 } })
+  })
+
   it('offers Anthropic, Ollama and OpenAI-compatible providers when none are configured', async () => {
     renderAt('/settings')
     expect(await screen.findByText(/no providers yet/i)).toBeInTheDocument()

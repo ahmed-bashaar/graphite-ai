@@ -276,7 +276,7 @@ describe('routes', () => {
       expect(within(reply).getByText(/read .domain model./i)).toBeVisible()
     })
 
-    it('stops a reply, leaving the message unanswered', async () => {
+    it('stops a reply, keeping what was written so far', async () => {
       const { projectId, chatSessionId } = await seedChat()
       await seedOllama()
       const stream = stubOllamaStream()
@@ -284,12 +284,32 @@ describe('routes', () => {
 
       await userEvent.type(await screen.findByRole('textbox', { name: /message/i }), 'hi{Enter}')
       await vi.waitFor(() => expect(stream.requests).toBe(1))
-      stream.push({ content: 'Partial' })
+      stream.push({ content: 'Partial answer' })
+      await screen.findByText('Partial answer')
+      await userEvent.click(await screen.findByRole('button', { name: /stop/i }))
+
+      await vi.waitFor(() => {
+        expect(screen.queryByRole('article', { busy: true })).toBeNull()
+        expect(screen.getAllByRole('article')).toHaveLength(2)
+      })
+      const [, stopped] = screen.getAllByRole('article')
+      expect(stopped).toHaveTextContent('Partial answer')
+      expect(within(stopped).getByText(/stopped/i)).toBeInTheDocument()
+      expect(screen.queryByText(/hasn.t replied/i)).toBeNull()
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+
+    it('stops a reply before anything is written, leaving the message unanswered', async () => {
+      const { projectId, chatSessionId } = await seedChat()
+      await seedOllama()
+      const stream = stubOllamaStream()
+      renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+
+      await userEvent.type(await screen.findByRole('textbox', { name: /message/i }), 'hi{Enter}')
+      await vi.waitFor(() => expect(stream.requests).toBe(1))
       await userEvent.click(await screen.findByRole('button', { name: /stop/i }))
 
       expect(await screen.findByText(/hasn.t replied/i)).toBeInTheDocument()
-      expect(screen.queryByRole('article', { busy: true })).toBeNull()
-      expect(screen.queryByRole('alert')).toBeNull()
       expect(screen.getAllByRole('article')).toHaveLength(1)
     })
 
@@ -345,6 +365,27 @@ describe('routes', () => {
           { type: 'text', content: 'Model this' },
           { type: 'attachment', name: 'sketch.png', mediaType: 'image/png', data: 'iVBORw==' },
         ])
+      })
+
+      it('opens a sent image full size', async () => {
+        const { projectId, chatSessionId } = await seedChat()
+        await db.messages.add({
+          chatSessionId,
+          sender: 'user',
+          on: new Date(),
+          isSent: true,
+          parts: [{ type: 'attachment', name: 'sketch.png', mediaType: 'image/png', data: 'iVBORw==' }],
+        })
+        renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+
+        await userEvent.click(await screen.findByRole('button', { name: 'Open sketch.png' }))
+        const viewer = screen.getByRole('dialog', { name: 'sketch.png' })
+        expect(within(viewer).getByRole('img', { name: 'sketch.png' })).toHaveAttribute('src', 'data:image/png;base64,iVBORw==')
+        expect(within(viewer).getByRole('button', { name: /close/i })).toHaveFocus()
+
+        await userEvent.keyboard('{Escape}')
+        expect(screen.queryByRole('dialog')).toBeNull()
+        expect(screen.getByRole('button', { name: 'Open sketch.png' })).toHaveFocus()
       })
 
       it('references a project diagram', async () => {

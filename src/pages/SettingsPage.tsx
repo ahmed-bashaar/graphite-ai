@@ -1,5 +1,12 @@
 import { useLiveQuery } from 'dexie-react-hooks'
+import { useId, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
+import {
+  loadAgentSettings,
+  MAX_STEPS_RANGE,
+  saveAgentSettings,
+  type AgentSettings,
+} from '../agent/settings.ts'
 import { db } from '../db.ts'
 import { providerKinds, type ProviderKind } from '../providers.ts'
 
@@ -8,6 +15,7 @@ const card =
 
 export function SettingsPage() {
   const providers = useLiveQuery(() => db.providers.toArray())
+  const agentSettings = useLiveQuery(loadAgentSettings)
 
   return (
     <>
@@ -55,6 +63,66 @@ export function SettingsPage() {
           ))}
         </ul>
       </section>
+
+      <section className="mt-10">
+        <h2 className="font-medium text-zinc-900 dark:text-zinc-50">Agent</h2>
+        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          How GraphiteAI works on a reply before answering.
+        </p>
+        {agentSettings && <AgentSettingsForm initial={agentSettings} />}
+      </section>
     </>
+  )
+}
+
+function AgentSettingsForm({ initial }: { initial: AgentSettings }) {
+  const [maxSteps, setMaxSteps] = useState(String(initial.maxSteps))
+  const [saved, setSaved] = useState(false)
+  const id = useId()
+
+  async function save(event: FormEvent) {
+    event.preventDefault()
+    await saveAgentSettings({ maxSteps: Number(maxSteps) })
+    setMaxSteps(String((await loadAgentSettings()).maxSteps))
+    setSaved(true)
+  }
+
+  return (
+    <form onSubmit={save} className="mt-4 flex flex-wrap items-end gap-3">
+      <div>
+        <label htmlFor={id} className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          Max steps per reply
+        </label>
+        <input
+          id={id}
+          type="number"
+          required
+          min={MAX_STEPS_RANGE.min}
+          max={MAX_STEPS_RANGE.max}
+          value={maxSteps}
+          onChange={(event) => {
+            setMaxSteps(event.target.value)
+            setSaved(false)
+          }}
+          className="mt-1 w-28 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+        />
+        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+          Model calls (thinking, tool use, fixing diagrams) before it must answer. {MAX_STEPS_RANGE.min}–
+          {MAX_STEPS_RANGE.max}.
+        </p>
+      </div>
+      <button
+        type="submit"
+        aria-label="Save agent settings"
+        className="mb-5 rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+      >
+        Save
+      </button>
+      {saved && (
+        <span role="status" className="mb-6 text-sm text-zinc-500 dark:text-zinc-400">
+          Saved
+        </span>
+      )}
+    </form>
   )
 }

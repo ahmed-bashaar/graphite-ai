@@ -229,6 +229,12 @@ describe('AnthropicProvider', () => {
     expect(calls[0].body).not.toHaveProperty('tools')
   })
 
+  it('turns on prompt caching, so the loop resends history and attachments as cache reads', async () => {
+    const { fetch, calls } = fakeFetch(anthropicStream([{ type: 'text', text: 'ok' }]))
+    await opus(fetch).step(attachmentTurns, [checkTool])
+    expect(calls[0].body).toMatchObject({ cache_control: { type: 'ephemeral' } })
+  })
+
   it('does not send fallbacks or adaptive thinking to models that do not support them', async () => {
     const { fetch, calls } = fakeFetch(anthropicStream([{ type: 'text', text: 'ok' }]))
     await new AnthropicProvider({ fetch })
@@ -434,6 +440,20 @@ describe('OllamaProvider', () => {
     expect(calls[1].body).not.toHaveProperty('tools')
   })
 
+  it('remembers across replies that a model does not support tools', async () => {
+    const { fetch, calls } = fakeFetch(
+      new HttpError(400, { error: 'registry.ollama.ai/library/gemma:2b does not support tools' }),
+      ndjson({ message: { content: 'ok' }, done: true }),
+      ndjson({ message: { content: 'ok' }, done: true }),
+    )
+    const provider = new OllamaProvider({ fetch })
+    await provider.provideModel({ model: 'gemma:2b' }).step(turns, [checkTool])
+    await provider.provideModel({ model: 'gemma:2b' }).step(turns, [checkTool])
+
+    expect(calls).toHaveLength(3)
+    expect(calls[2].body).not.toHaveProperty('tools')
+  })
+
   it('surfaces HTTP errors with the server message', async () => {
     const { fetch } = fakeFetch(new HttpError(404, { error: 'model "nope" not found' }))
     const model = new OllamaProvider({ fetch }).provideModel({ model: 'nope' })
@@ -619,11 +639,44 @@ describe('OpenAiCompatibleProvider', () => {
     })
   })
 
-  it('sends attached images as image_url parts, and says it cannot read PDFs', async () => {
+  it('sends attached images as image_url parts and PDFs as file parts', async () => {
     const { fetch, calls } = fakeFetch(sse({ choices: [{ delta: { content: 'ok' } }] }))
     await gpt(fetch).step(attachmentTurns, [])
 
     expect((calls[0].body as { messages: unknown }).messages).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Model this' },
+          { type: 'image_url', image_url: { url: `data:image/png;base64,${png.data}` } },
+          { type: 'file', file: { filename: 'spec.pdf', file_data: `data:application/pdf;base64,${pdf.data}` } },
+        ],
+      },
+    ])
+  })
+
+  it('falls back to Gemini-style PDFs, then to a note, remembering what works', async () => {
+    const ok = () => sse({ choices: [{ delta: { content: 'ok' } }] })
+    const { fetch, calls } = fakeFetch(
+      new HttpError(400, [{ error: { code: 400, message: 'Invalid content part type: file' } }]),
+      ok(),
+      ok(),
+    )
+    const model = gpt(fetch)
+    await model.step(attachmentTurns, [])
+    await model.step(attachmentTurns, [])
+
+    const pdfPart = (call: Call) => (call.body as { messages: { content: { type: string }[] }[] }).messages[0].content[2]
+    expect(pdfPart(calls[1])).toEqual({ type: 'image_url', image_url: { url: `data:application/pdf;base64,${pdf.data}` } })
+    expect(pdfPart(calls[2])).toEqual(pdfPart(calls[1]))
+
+    const { fetch: fetch2, calls: calls2 } = fakeFetch(
+      new HttpError(400, { error: { message: 'Invalid content part type: file' } }),
+      new HttpError(400, { error: { message: 'Unsupported MIME type: application/pdf' } }),
+      ok(),
+    )
+    await gpt(fetch2).step(attachmentTurns, [])
+    expect((calls2[2].body as { messages: unknown }).messages).toEqual([
       {
         role: 'user',
         content: [
@@ -632,6 +685,44 @@ describe('OpenAiCompatibleProvider', () => {
         ],
       },
     ])
+  })
+
+  it('falls back to no tools for models that reject them, remembering it', async () => {
+    const ok = () => sse({ choices: [{ delta: { content: 'ok' } }] })
+    const { fetch, calls } = fakeFetch(
+      new HttpError(400, { error: { message: 'This model does not support function calling.' } }),
+      ok(),
+      ok(),
+    )
+    const model = gpt(fetch)
+
+    expect((await model.step(turns, [checkTool])).text).toBe('ok')
+    await model.step(turns, [checkTool])
+    expect(calls[0].body).toHaveProperty('tools')
+    expect(calls[1].body).not.toHaveProperty('tools')
+    expect(calls[2].body).not.toHaveProperty('tools')
+  })
+
+  it('remembers what a model supports across replies, per server and model', async () => {
+    const ok = () => sse({ choices: [{ delta: { content: 'ok' } }] })
+    const { fetch, calls } = fakeFetch(
+      new HttpError(400, { error: { message: 'tools are not supported' } }),
+      ok(),
+      ok(),
+      ok(),
+    )
+    const provider = new OpenAiCompatibleProvider({ fetch })
+    await provider.provideModel({ baseUrl: 'http://lm.test/v1', model: 'tiny' }).step(turns, [checkTool])
+    await provider.provideModel({ baseUrl: 'http://lm.test/v1', model: 'tiny' }).step(turns, [checkTool])
+    await provider.provideModel({ baseUrl: 'http://lm.test/v1', model: 'big' }).step(turns, [checkTool])
+
+    expect(calls.map((c) => 'tools' in (c.body as object))).toEqual([true, false, false, true])
+  })
+
+  it('does not retry other errors', async () => {
+    const { fetch, calls } = fakeFetch(new HttpError(401, { error: { message: 'Invalid API key' } }))
+    await expect(gpt(fetch).step(attachmentTurns, [checkTool])).rejects.toThrow(/401.*Invalid API key/)
+    expect(calls).toHaveLength(1)
   })
 
   it('passes unparseable tool arguments on as empty args', async () => {
