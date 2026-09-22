@@ -65,7 +65,7 @@ npm run preview   # serve the production build
 
 `docs/uml/graphite-ai-uml.mdj` is a StarUML model; `docs/uml/Class.jpg` is its rendered class diagram. Update both if the design changes. The `.mdj` also contains stale elements that are not on the diagram (TextRenderer, RenderableAscii, Eventful, EventListener, Referencable, MessageBlock, TextBlock). Don't implement those.
 
-The `.mdj` model is ahead of `Class.jpg`. It already has the agentic-loop, streaming and attachment changes: new members on AiAgent, LlmModel (`step`), LlmProvider (`learned`), AgenticTool (`inputSchema`) and ChatSession (`reportError`, `reportProgress`), plus the new ToolCall, ToolResult, ChatTurn, TurnAttachment, ModelStep, StepOptions, AgentStep, AgentProgress, AiAgentOptions, Attachment and AttachmentKind. The new classes are in the model but not yet placed on the Class diagram. Drag them in from StarUML's Model Explorer and re-export `Class.jpg`. Until then, the `.mdj` model is the reference for these elements. When editing the `.mdj` by script, keep StarUML's format (tabs, CRLF, no trailing newline) so diffs stay small, give new elements unique `_id`s, and set `_parent` refs.
+`Class.jpg` shows the agentic-loop, streaming and attachment members on the existing classes: AiAgent (`options`, `attach`, `detach`, `runTool`), LlmModel (`step`), LlmProvider (`learned`), AgenticTool (`inputSchema`) and ChatSession (`reportError`, `reportProgress`). The new classes are in the `.mdj` model but not yet placed on the Class diagram: ToolCall, ToolResult, ChatTurn, TurnAttachment, ModelStep, StepOptions, AgentStep, AgentProgress, AiAgentOptions, Attachment and AttachmentKind. Until they are, the `.mdj` model is the reference for them. When editing the `.mdj` by script, keep StarUML's format (tabs, CRLF, no trailing newline) so diffs stay small, give new elements unique `_id`s, and set `_parent` refs. StarUML adds members of existing classes to their diagram boxes by itself; new classes have to be dragged in from the Model Explorer.
 
 The domain model is an AI chat app that produces diagrams:
 
@@ -73,7 +73,7 @@ The domain model is an AI chat app that produces diagrams:
 - **ChatSession** holds a `draft` and composes **Message**s (`sender`, `on`, `isSent`); each Message composes **MessagePart**s (`type`, `content`). **DiagramReference** is a MessagePart subtype that points at a Diagram.
 - **AiAgent** (`name`, `systemPrompt`, `respond(message)`) is attached to a ChatSession, aggregates one **LlmModel** and a set of **AgenticTool**s (`name`, `description`, `call(args)`).
 - **LlmProvider** (`name`, `provideModel(args)`, `listModels()`) composes LlmModels. LlmProvider and AgenticTool implement **Parametered** (`exposeParameters()`), i.e. they describe their own configurable arguments.
-- **Attachment** (in the `.mdj` model, not yet on `Class.jpg`) is a MessagePart subtype for a file the user attached.
+- **Attachment** (in the `.mdj` model, not yet placed on `Class.jpg`) is a MessagePart subtype for a file the user attached.
 - **Renderable** (`render()`) is implemented by Message, MessagePart, and Diagram. Its purpose: convert ASCII-based formats the LLM produces (JSON, XML, Markdown) into browser-native output (HTML, CSS, SVG).
 - **EventEmitter** (`on`/`off`/protected `emit`) drives the chat loop: the ChatSession depends on it, and the agent learns when to respond via emitted events rather than direct calls, so multiple messages can go back and forth asynchronously.
 
