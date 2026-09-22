@@ -6,7 +6,7 @@ import type { Args, Parameter } from '../lib/index.ts'
 import { isProviderKind, providerKinds, type ProviderKind } from '../providers.ts'
 import { NotFound } from './NotFound.tsx'
 
-/** `/settings/providers/new/:kind` (create) and `/settings/providers/:providerId` (edit). */
+/** `/app/settings/providers/new/:kind` (create) and `/app/settings/providers/:providerId` (edit). */
 export function ProviderPage() {
   const { kind, providerId } = useParams()
   const id = Number(providerId)
@@ -60,13 +60,13 @@ function ProviderForm({ kind, record }: { kind: ProviderKind; record?: ProviderR
     const data = { kind, name: name.trim() || info.label, args: args() }
     if (record) await db.providers.update(record.id, data)
     else await db.providers.add(data)
-    navigate('/settings')
+    navigate('/app/settings')
   }
 
   async function remove() {
     if (!record) return
     await db.providers.delete(record.id)
-    navigate('/settings')
+    navigate('/app/settings')
   }
 
   async function loadModels() {
@@ -81,7 +81,7 @@ function ProviderForm({ kind, record }: { kind: ProviderKind; record?: ProviderR
   return (
     <form onSubmit={save} className="flex flex-col gap-5">
       <div>
-        <Link to="/settings" className="text-sm text-zinc-500 hover:underline dark:text-zinc-400">
+        <Link to="/app/settings" className="text-sm text-zinc-500 hover:underline dark:text-zinc-400">
           ← Settings
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
@@ -154,7 +154,7 @@ function ProviderForm({ kind, record }: { kind: ProviderKind; record?: ProviderR
         >
           Save
         </button>
-        <Link to="/settings" className={secondaryButton}>
+        <Link to="/app/settings" className={secondaryButton}>
           Cancel
         </Link>
         {record && (

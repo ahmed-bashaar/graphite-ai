@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest'
 import App from './App.tsx'
 
 describe('App', () => {
-  it('opens on the projects page', () => {
+  it('opens on the landing page', () => {
     render(<App />)
-    expect(screen.getByRole('heading', { name: /projects/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /open graphiteai/i })).toHaveAttribute('href', '/app')
   })
 })

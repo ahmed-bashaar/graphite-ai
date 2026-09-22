@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+@theme {
+  /* The text caret of TypedText (components/textEffects.tsx). */
+  --animate-caret: caret 1s steps(1) infinite;
+
+  @keyframes caret {
+    50% {
+      opacity: 0;
+    }
+  }
+}
+
 @layer base {
   :root {
     color-scheme: light dark;

@@ -112,7 +112,7 @@ function DiagramView({ diagram, initialVersion }: { diagram: DiagramRecord; init
                 noun="diagram"
                 onConfirm={async () => {
                   await deleteDiagram(diagram.id)
-                  navigate(`/projects/${diagram.projectId}`)
+                  navigate(`/app/projects/${diagram.projectId}`)
                 }}
               />
             </div>

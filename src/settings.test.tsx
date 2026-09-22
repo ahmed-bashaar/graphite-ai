@@ -23,20 +23,20 @@ describe('settings', () => {
   })
 
   it('is linked from the projects page and from inside a project', async () => {
-    const router = renderAt('/')
+    const router = renderAt('/app')
     await userEvent.click(screen.getByRole('link', { name: /settings/i }))
-    await expectPath(router, '/settings')
+    await expectPath(router, '/app/settings')
     expect(await screen.findByRole('heading', { name: /llm providers/i })).toBeInTheDocument()
 
     const projectId = await db.projects.add({ name: 'P', createdAt: new Date() })
-    await router.navigate(`/projects/${projectId}`)
+    await router.navigate(`/app/projects/${projectId}`)
     await screen.findByRole('navigation', { name: /project/i })
     await userEvent.click(screen.getByRole('link', { name: /settings/i }))
-    await expectPath(router, '/settings')
+    await expectPath(router, '/app/settings')
   })
 
   it('sets how many steps GraphiteAI can take per reply', async () => {
-    renderAt('/settings')
+    renderAt('/app/settings')
 
     const field = await screen.findByRole('spinbutton', { name: /max steps per reply/i })
     await vi.waitFor(() => expect(field).toHaveValue(12))
@@ -49,7 +49,7 @@ describe('settings', () => {
   })
 
   it('offers Anthropic, Ollama and OpenAI-compatible providers when none are configured', async () => {
-    renderAt('/settings')
+    renderAt('/app/settings')
     expect(await screen.findByText(/no providers yet/i)).toBeInTheDocument()
     for (const kind of [/anthropic/i, /ollama/i, /openai-compatible/i]) {
       expect(screen.getByRole('link', { name: kind })).toBeInTheDocument()
@@ -57,9 +57,9 @@ describe('settings', () => {
   })
 
   it('adds an Anthropic provider from a form built from its parameters', async () => {
-    const router = renderAt('/settings')
+    const router = renderAt('/app/settings')
     await userEvent.click(await screen.findByRole('link', { name: /anthropic/i }))
-    await expectPath(router, '/settings/providers/new/anthropic')
+    await expectPath(router, '/app/settings/providers/new/anthropic')
 
     expect(await screen.findByLabelText(/name/i)).toHaveValue('Anthropic')
     expect(screen.getByLabelText(/model/i)).toHaveValue('claude-opus-5')
@@ -69,7 +69,7 @@ describe('settings', () => {
     await userEvent.type(apiKey, 'sk-ant-test')
     await userEvent.click(screen.getByRole('button', { name: /save/i }))
 
-    await expectPath(router, '/settings')
+    await expectPath(router, '/app/settings')
     const [record] = await db.providers.toArray()
     expect(record).toMatchObject({
       kind: 'anthropic',
@@ -83,7 +83,7 @@ describe('settings', () => {
   })
 
   it('does not save while a required setting is missing', async () => {
-    renderAt('/settings/providers/new/anthropic')
+    renderAt('/app/settings/providers/new/anthropic')
     await userEvent.click(await screen.findByRole('button', { name: /save/i }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/apiKey/)
@@ -92,9 +92,9 @@ describe('settings', () => {
 
   it('edits an existing provider', async () => {
     const id = await seedAnthropic()
-    const router = renderAt('/settings')
+    const router = renderAt('/app/settings')
     await userEvent.click(await screen.findByRole('link', { name: /work claude/i }))
-    await expectPath(router, `/settings/providers/${id}`)
+    await expectPath(router, `/app/settings/providers/${id}`)
 
     const model = await screen.findByLabelText(/model/i)
     expect(screen.getByLabelText(/api key/i)).toHaveValue('sk-old')
@@ -102,16 +102,16 @@ describe('settings', () => {
     await userEvent.type(model, 'claude-sonnet-5')
     await userEvent.click(screen.getByRole('button', { name: /save/i }))
 
-    await expectPath(router, '/settings')
+    await expectPath(router, '/app/settings')
     expect((await db.providers.get(id))?.args.model).toBe('claude-sonnet-5')
   })
 
   it('removes a provider', async () => {
     const id = await seedAnthropic()
-    const router = renderAt(`/settings/providers/${id}`)
+    const router = renderAt(`/app/settings/providers/${id}`)
     await userEvent.click(await screen.findByRole('button', { name: /remove/i }))
 
-    await expectPath(router, '/settings')
+    await expectPath(router, '/app/settings')
     expect(await db.providers.count()).toBe(0)
   })
 
@@ -120,7 +120,7 @@ describe('settings', () => {
       'fetch',
       vi.fn(async () => Response.json({ models: [{ name: 'llama3.2' }, { name: 'qwen3:8b' }] })),
     )
-    renderAt('/settings/providers/new/ollama')
+    renderAt('/app/settings/providers/new/ollama')
     await userEvent.click(await screen.findByRole('button', { name: /load models/i }))
 
     expect(await screen.findByText(/2 models available/i)).toBeInTheDocument()
@@ -131,14 +131,14 @@ describe('settings', () => {
 
   it('shows why loading models failed', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('Failed to fetch'))))
-    renderAt('/settings/providers/new/ollama')
+    renderAt('/app/settings/providers/new/ollama')
     await userEvent.click(await screen.findByRole('button', { name: /load models/i }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/failed to fetch/i)
   })
 
   it('reports an unknown provider type', async () => {
-    renderAt('/settings/providers/new/nope')
+    renderAt('/app/settings/providers/new/nope')
     expect(await screen.findByText(/provider type not found/i)).toBeInTheDocument()
   })
 })

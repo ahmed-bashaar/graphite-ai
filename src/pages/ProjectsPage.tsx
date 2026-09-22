@@ -14,7 +14,7 @@ export function ProjectsPage() {
     const trimmed = name.trim()
     if (!trimmed) return
     const id = await db.projects.add({ name: trimmed, createdAt: new Date() })
-    navigate(`/projects/${id}`)
+    navigate(`/app/projects/${id}`)
   }
 
   return (
@@ -59,7 +59,7 @@ export function ProjectsPage() {
           {projects?.map((project) => (
             <li key={project.id}>
               <Link
-                to={`/projects/${project.id}`}
+                to={`/app/projects/${project.id}`}
                 className="block rounded-xl border border-zinc-200 bg-white p-4 transition hover:border-zinc-400 hover:shadow-sm dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-600"
               >
                 <span className="block truncate font-medium text-zinc-900 dark:text-zinc-50">
