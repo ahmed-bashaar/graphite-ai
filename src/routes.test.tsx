@@ -23,6 +23,35 @@ function stubOllamaReply(content: string) {
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({ message: { role: 'assistant', content } })))
 }
 
+/**
+ * Stubs fetch as an Ollama server whose streamed replies the test writes line
+ * by line. A stopped (aborted) request ends its stream with an AbortError.
+ */
+function stubOllamaStream() {
+  const encoder = new TextEncoder()
+  const stream: { requests: number; push: (message: object, done?: boolean) => void; close: () => void } = {
+    requests: 0,
+    push: () => {},
+    close: () => {},
+  }
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, init?: RequestInit) => {
+      stream.requests++
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          stream.push = (message, done = false) =>
+            controller.enqueue(encoder.encode(JSON.stringify({ message, done }) + '\n'))
+          stream.close = () => controller.close()
+          init?.signal?.addEventListener('abort', () => controller.error(new DOMException('Aborted', 'AbortError')))
+        },
+      })
+      return new Response(body)
+    }),
+  )
+  return stream
+}
+
 describe('routes', () => {
   // Reset before (not after) each test so no mounted live query sees a closed db.
   beforeEach(async () => {
@@ -164,31 +193,100 @@ describe('routes', () => {
       await userEvent.type(await screen.findByRole('textbox', { name: /message/i }), 'hi{Enter}')
 
       expect(await screen.findByRole('status')).toHaveTextContent(/thinking/i)
-      expect(screen.getByRole('button', { name: /send/i })).toBeDisabled()
+      expect(screen.queryByRole('button', { name: /send/i })).toBeNull()
+      expect(screen.getByRole('button', { name: /stop/i })).toBeInTheDocument()
       // The status shows before the request goes out (the user message is saved first).
       await vi.waitFor(() => expect(fetch).toHaveBeenCalled())
       answer(Response.json({ message: { content: 'hello' } }))
       await vi.waitFor(() => expect(screen.queryByRole('status')).toBeNull())
     })
 
-    it('keeps a record of the agent’s work with the reply', async () => {
+    it('streams the reply as it is written, then shows the saved message', async () => {
       const { projectId, chatSessionId } = await seedChat()
-      await db.diagrams.add({ projectId, type: 'class', name: 'Domain model', source: 'classDiagram' })
       await seedOllama()
-      const replies = [
-        { content: '', tool_calls: [{ function: { name: 'read_diagram', arguments: { title: 'Domain model' } } }] },
-        { content: 'It has no classes yet.' },
-      ]
-      vi.stubGlobal('fetch', vi.fn(async () => Response.json({ message: replies.shift(), done: true })))
+      const stream = stubOllamaStream()
       renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
 
       await userEvent.type(await screen.findByRole('textbox', { name: /message/i }), 'hi{Enter}')
+      await vi.waitFor(() => expect(stream.requests).toBe(1))
+      stream.push({ content: 'Hello, ' })
 
-      await vi.waitFor(() => expect(screen.getAllByRole('article')).toHaveLength(2))
+      const live = await screen.findByRole('article', { busy: true })
+      await vi.waitFor(() => expect(live).toHaveTextContent('Hello,'))
+      expect(screen.getByRole('status')).toHaveTextContent(/writing/i)
+
+      stream.push({ content: 'world!' }, true)
+      stream.close()
+      await vi.waitFor(() => expect(screen.queryByRole('article', { busy: true })).toBeNull())
+      const articles = screen.getAllByRole('article')
+      expect(articles).toHaveLength(2)
+      expect(articles[1]).toHaveTextContent('Hello, world!')
+    })
+
+    it('does not draw diagrams while the reply is still being written and checked', async () => {
+      const { projectId, chatSessionId } = await seedChat()
+      await seedOllama()
+      const stream = stubOllamaStream()
+      renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+
+      await userEvent.type(await screen.findByRole('textbox', { name: /message/i }), 'hi{Enter}')
+      await vi.waitFor(() => expect(stream.requests).toBe(1))
+      stream.push({ content: '```mermaid\n---\ntitle: Domain\n---\nclassDiagram\n  class Book\n```\n' })
+
+      const live = await screen.findByRole('article', { busy: true })
+      await vi.waitFor(() => expect(live).toHaveTextContent(/domain/i))
+      expect(within(live).queryByTestId('mermaid-svg')).toBeNull()
+
+      stream.close()
+      await vi.waitFor(() => expect(screen.queryByRole('article', { busy: true })).toBeNull())
+      const saved = screen.getAllByRole('article')
+      expect(await within(saved[1]).findByTestId('mermaid-svg')).toHaveTextContent('class Book')
+    })
+
+    it('shows the agent�s work as it happens and keeps it with the reply', async () => {
+      const { projectId, chatSessionId } = await seedChat()
+      await db.diagrams.add({ projectId, type: 'class', name: 'Domain model', source: 'classDiagram' })
+      await seedOllama()
+      const stream = stubOllamaStream()
+      renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+
+      await userEvent.type(await screen.findByRole('textbox', { name: /message/i }), 'hi{Enter}')
+      await vi.waitFor(() => expect(stream.requests).toBe(1))
+      stream.push(
+        { content: '', tool_calls: [{ function: { name: 'read_diagram', arguments: { title: 'Domain model' } } }] },
+        true,
+      )
+      stream.close()
+
+      const live = await screen.findByRole('article', { busy: true })
+      expect(await within(live).findByText(/read .domain model./i)).toBeInTheDocument()
+      await vi.waitFor(() => expect(stream.requests).toBe(2))
+      stream.push({ content: 'It has no classes yet.' }, true)
+      stream.close()
+
+      await vi.waitFor(() => expect(screen.queryByRole('article', { busy: true })).toBeNull())
       const [, reply] = screen.getAllByRole('article')
       expect(reply).toHaveTextContent('It has no classes yet.')
-      await userEvent.click(within(reply).getByText(/worked through 1 step/i))
+      const work = within(reply).getByText(/worked through 1 step/i)
+      await userEvent.click(work)
       expect(within(reply).getByText(/read .domain model./i)).toBeVisible()
+    })
+
+    it('stops a reply, leaving the message unanswered', async () => {
+      const { projectId, chatSessionId } = await seedChat()
+      await seedOllama()
+      const stream = stubOllamaStream()
+      renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+
+      await userEvent.type(await screen.findByRole('textbox', { name: /message/i }), 'hi{Enter}')
+      await vi.waitFor(() => expect(stream.requests).toBe(1))
+      stream.push({ content: 'Partial' })
+      await userEvent.click(await screen.findByRole('button', { name: /stop/i }))
+
+      expect(await screen.findByText(/hasn.t replied/i)).toBeInTheDocument()
+      expect(screen.queryByRole('article', { busy: true })).toBeNull()
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(screen.getAllByRole('article')).toHaveLength(1)
     })
 
     it('shows a failed reply with a retry button', async () => {

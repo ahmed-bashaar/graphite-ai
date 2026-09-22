@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { validateMermaid } from '../components/renderMermaid.ts'
 import { db } from '../db.ts'
 import { NoProviderError, reply, sendMessage } from './conversation.ts'
+import { replyProgress, stopReply } from './replies.ts'
 import { AGENT_NAME, SYSTEM_PROMPT } from './systemPrompt.ts'
 
 type FetchLike = (url: string, init?: RequestInit) => Promise<Response>
@@ -237,5 +238,72 @@ describe('conversation', () => {
         result: 'classDiagram\n  class Book',
       },
     ])
+  })
+
+  it('streams its progress while replying', async () => {
+    const { chatSessionId } = await seed()
+    let push: (line: object) => void = () => {}
+    let close: () => void = () => {}
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<FetchLike>(async () => {
+        const encoder = new TextEncoder()
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            push = (line) => controller.enqueue(encoder.encode(JSON.stringify(line) + '\n'))
+            close = () => controller.close()
+          },
+        })
+        return new Response(body)
+      }),
+    )
+
+    const sending = sendMessage(chatSessionId, 'hello')
+    await vi.waitFor(() => expect(replyProgress(chatSessionId)).toEqual({ steps: [], draft: '' }))
+    push({ message: { content: 'Hel' } })
+    await vi.waitFor(() => expect(replyProgress(chatSessionId)?.draft).toBe('Hel'))
+    push({ message: { content: 'lo!' }, done: true })
+    close()
+    await sending
+
+    expect(replyProgress(chatSessionId)).toBeUndefined()
+    const [, agentMessage] = await messages(chatSessionId)
+    expect(agentMessage.parts).toEqual([{ type: 'text', content: 'Hello!' }])
+    expect(agentMessage).not.toHaveProperty('steps')
+  })
+
+  it('stops a reply on request, saving nothing', async () => {
+    const { chatSessionId } = await seed()
+    const fetch = vi.fn<FetchLike>(
+      (_url, init) =>
+        new Promise((_resolve, reject) =>
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError'))),
+        ),
+    )
+    vi.stubGlobal('fetch', fetch)
+
+    const sending = sendMessage(chatSessionId, 'hello')
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalled())
+    stopReply(chatSessionId)
+    await sending
+
+    expect(replyProgress(chatSessionId)).toBeUndefined()
+    expect((await messages(chatSessionId)).map((m) => m.sender)).toEqual(['user'])
+  })
+
+  it('does not start a second reply while one is in progress', async () => {
+    const { chatSessionId } = await seed()
+    let answer: (value: Response) => void = () => {}
+    const fetch = vi.fn<FetchLike>(() => new Promise((resolve) => (answer = resolve)))
+    vi.stubGlobal('fetch', fetch)
+
+    const sending = sendMessage(chatSessionId, 'hello')
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalled())
+    await reply(chatSessionId)
+    answer(Response.json({ message: { content: 'hi' }, done: true }))
+    await sending
+
+    expect(fetch).toHaveBeenCalledOnce()
+    expect(await messages(chatSessionId)).toHaveLength(2)
   })
 })

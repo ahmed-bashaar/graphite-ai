@@ -18,6 +18,7 @@ import {
 } from '../lib/index.ts'
 import { providerKinds } from '../providers.ts'
 import { NEW_CHAT_TITLE, titleFrom } from './chatTitle.ts'
+import { endReply, startReply, updateReply } from './replies.ts'
 import { AGENT_NAME, SYSTEM_PROMPT } from './systemPrompt.ts'
 import { checkDiagrams, diagramTools, sameName } from './tools.ts'
 
@@ -50,8 +51,9 @@ export async function sendMessage(chatSessionId: number, content: string): Promi
 /**
  * Has the agent answer the chat's last message, if it's an unanswered user
  * message, and stores the reply. The agent works through tool calls and has
- * its diagrams checked before answering. Mermaid blocks in the reply become
- * project Diagrams; a diagram titled like an existing one replaces its source.
+ * its diagrams checked before answering; progress streams to `replies.ts`.
+ * Mermaid blocks in the reply become project Diagrams; a diagram titled like
+ * an existing one replaces its source. A stopped reply saves nothing.
  */
 export async function reply(chatSessionId: number): Promise<void> {
   const session = await db.chatSessions.get(chatSessionId)
@@ -64,27 +66,40 @@ export async function reply(chatSessionId: number): Promise<void> {
   if (!provider) throw new NoProviderError()
   const model = providerKinds[provider.kind].create().provideModel(provider.args)
 
-  const diagrams = await db.diagrams.where({ projectId: session.projectId }).toArray()
-  const history = records.map((record) => toMessage(record, diagrams))
+  const controller = startReply(chatSessionId)
+  if (!controller) return // Already being answered.
+  try {
+    const diagrams = await db.diagrams.where({ projectId: session.projectId }).toArray()
+    const history = records.map((record) => toMessage(record, diagrams))
 
-  // The agent reacts to the session's `message` event rather than being called directly.
-  const chat = new ChatSession()
-  chat.messages = history.slice(0, -1)
-  let steps: AgentStep[] = []
-  chat.on('progress', (progress) => (steps = progress.steps))
-  const agent = new AiAgent(AGENT_NAME, model, diagramTools(session.projectId), SYSTEM_PROMPT, {
-    checkAnswer: checkDiagrams,
-  })
-  const answer = await new Promise<Message>((resolve, reject) => {
-    chat.on('message', (message) => {
-      if (message.sender === AGENT_NAME) resolve(message)
+    // The agent reacts to the session's `message` event rather than being called directly.
+    const chat = new ChatSession()
+    chat.messages = history.slice(0, -1)
+    let steps: AgentStep[] = []
+    chat.on('progress', (progress) => {
+      steps = progress.steps
+      updateReply(chatSessionId, progress)
     })
-    chat.on('error', reject)
-    chat.setAgent(agent)
-    chat.send(history[history.length - 1])
-  }).finally(() => chat.setAgent(null))
+    const agent = new AiAgent(AGENT_NAME, model, diagramTools(session.projectId), SYSTEM_PROMPT, {
+      checkAnswer: checkDiagrams,
+      signal: controller.signal,
+    })
+    const answer = await new Promise<Message>((resolve, reject) => {
+      chat.on('message', (message) => {
+        if (message.sender === AGENT_NAME) resolve(message)
+      })
+      chat.on('error', reject)
+      chat.setAgent(agent)
+      chat.send(history[history.length - 1])
+    }).finally(() => chat.setAgent(null))
 
-  await saveReply(session, provider, answer, steps)
+    await saveReply(session, provider, answer, steps)
+  } catch (error) {
+    if (controller.signal.aborted) return
+    throw error
+  } finally {
+    endReply(chatSessionId)
+  }
 }
 
 async function providerFor(session: ChatSessionRecord): Promise<ProviderRecord | undefined> {
