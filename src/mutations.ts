@@ -32,33 +32,51 @@ export async function deleteDiagram(diagramId: number): Promise<void> {
 }
 
 /** Adds a diagram and records its source as the first version. */
-export async function createDiagram(diagram: Omit<DiagramRecord, 'id'>, author: VersionAuthor): Promise<number> {
+export async function createDiagram(
+  diagram: Omit<DiagramRecord, 'id'>,
+  author: VersionAuthor,
+): Promise<{ diagramId: number; versionId: number }> {
   return db.transaction('rw', db.diagrams, db.diagramVersions, async () => {
     const diagramId = await db.diagrams.add(diagram)
-    await db.diagramVersions.add({ diagramId, source: diagram.source, savedAt: new Date(), author })
-    return diagramId
+    const versionId = await db.diagramVersions.add({ diagramId, source: diagram.source, savedAt: new Date(), author })
+    return { diagramId, versionId }
+  })
+}
+
+/**
+ * The id of a diagram's current (newest) version, for pinning a reference to
+ * it. A diagram from before version history gets its source recorded as an
+ * `earlier` version first. Undefined if the diagram doesn't exist.
+ */
+export async function currentVersionId(diagramId: number): Promise<number | undefined> {
+  return db.transaction('rw', db.diagrams, db.diagramVersions, async () => {
+    const newest = await db.diagramVersions.where({ diagramId }).last()
+    if (newest) return newest.id
+    const diagram = await db.diagrams.get(diagramId)
+    if (!diagram) return undefined
+    return db.diagramVersions.add({ diagramId, source: diagram.source, savedAt: new Date(0), author: 'earlier' })
   })
 }
 
 /**
  * Sets a diagram's source (and the type it implies) and records it as a new
  * version. A diagram from before version history gets its old source recorded
- * first. Saving the same source again does nothing.
+ * first. Saving the same source again records nothing. Returns the version
+ * that is current afterwards.
  */
 export async function updateDiagramSource(
   diagramId: number,
   source: string,
   author: VersionAuthor,
   restoredFrom?: number,
-): Promise<void> {
-  await db.transaction('rw', db.diagrams, db.diagramVersions, async () => {
+): Promise<number | undefined> {
+  return db.transaction('rw', db.diagrams, db.diagramVersions, async () => {
     const diagram = await db.diagrams.get(diagramId)
-    if (!diagram || diagram.source === source) return
-    if ((await db.diagramVersions.where({ diagramId }).count()) === 0) {
-      await db.diagramVersions.add({ diagramId, source: diagram.source, savedAt: new Date(0), author: 'earlier' })
-    }
+    if (!diagram) return undefined
+    const previous = await currentVersionId(diagramId)
+    if (diagram.source === source) return previous
     await db.diagrams.update(diagramId, { source, type: diagramTypeOf(source) })
-    await db.diagramVersions.add({
+    return db.diagramVersions.add({
       diagramId,
       source,
       savedAt: new Date(),

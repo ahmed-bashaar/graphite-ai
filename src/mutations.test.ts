@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from './db.ts'
 import {
   createDiagram,
+  currentVersionId,
   deleteChat,
   deleteDiagram,
   deleteProject,
@@ -68,18 +69,37 @@ describe('mutations', () => {
 
     async function newDiagram() {
       const projectId = await db.projects.add({ name: 'P', createdAt: new Date() })
-      const diagramId = await createDiagram(
+      const { diagramId, versionId } = await createDiagram(
         { projectId, type: 'class', name: 'Domain', source: '---\ntitle: Domain\n---\nclassDiagram\n  class Book' },
         'agent',
       )
-      return { projectId, diagramId }
+      return { projectId, diagramId, versionId }
     }
 
     it('records the first version when a diagram is created', async () => {
-      const { diagramId } = await newDiagram()
+      const { diagramId, versionId } = await newDiagram()
       expect(await versions(diagramId)).toEqual([
-        expect.objectContaining({ diagramId, author: 'agent', source: expect.stringContaining('class Book') }),
+        expect.objectContaining({ id: versionId, diagramId, author: 'agent', source: expect.stringContaining('class Book') }),
       ])
+    })
+
+    it('returns the version a source update leaves current, even when nothing changed', async () => {
+      const { diagramId, versionId } = await newDiagram()
+      const v2 = await updateDiagramSource(diagramId, 'classDiagram\n  class Loan', 'agent')
+      expect(v2).not.toBe(versionId)
+      expect(await updateDiagramSource(diagramId, 'classDiagram\n  class Loan', 'agent')).toBe(v2)
+    })
+
+    it('gives the current version of a diagram, recording one for a diagram from before version history', async () => {
+      const { diagramId, versionId } = await newDiagram()
+      expect(await currentVersionId(diagramId)).toBe(versionId)
+
+      const projectId = await db.projects.add({ name: 'P', createdAt: new Date() })
+      const old = await db.diagrams.add({ projectId, type: 'class', name: 'Old', source: 'classDiagram' })
+      const pinned = await currentVersionId(old)
+      expect(await db.diagramVersions.get(pinned!)).toMatchObject({ diagramId: old, author: 'earlier', source: 'classDiagram' })
+      expect(await currentVersionId(old)).toBe(pinned)
+      expect(await currentVersionId(999)).toBeUndefined()
     })
 
     it('records a version for each change of source, and none when it is unchanged', async () => {

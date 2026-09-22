@@ -248,6 +248,48 @@ describe('routes', () => {
       expect(articles[1]).toHaveTextContent('Hello, world!')
     })
 
+    it('shows each message’s diagram as it was then, marking and linking earlier versions', async () => {
+      const { projectId, chatSessionId } = await seedChat()
+      const { diagramId, versionId: v1 } = await createDiagram(
+        { projectId, type: 'class', name: 'Domain', source: 'classDiagram\n  class Book' },
+        'agent',
+      )
+      const v2 = await updateDiagramSource(diagramId, 'classDiagram\n  class Book\n  class Loan', 'agent')
+      const agentMessage = (on: number, pinned?: number) => ({
+        chatSessionId,
+        sender: 'GraphiteAI',
+        on: new Date(on),
+        isSent: true,
+        parts: [{ type: 'diagram-reference' as const, diagramId, ...(pinned && { versionId: pinned }) }],
+      })
+      await db.messages.bulkAdd([agentMessage(1, v1), agentMessage(2, v2), agentMessage(3)])
+      renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+
+      const [earlier, latest, unpinned] = await screen.findAllByRole('article')
+      expect(await within(earlier).findByTestId('mermaid-svg')).not.toHaveTextContent('class Loan')
+      expect(within(earlier).getByRole('link', { name: /earlier version/i })).toHaveAttribute(
+        'href',
+        `/projects/${projectId}/diagrams/${diagramId}?version=${v1}`,
+      )
+      expect(await within(latest).findByTestId('mermaid-svg')).toHaveTextContent('class Loan')
+      expect(within(latest).queryByText(/earlier version/i)).toBeNull()
+      expect(await within(unpinned).findByTestId('mermaid-svg')).toHaveTextContent('class Loan')
+    })
+
+    it('opens the diagram page on the version a link asks for', async () => {
+      const projectId = await seedProject()
+      const { diagramId, versionId: v1 } = await createDiagram(
+        { projectId, type: 'class', name: 'Domain', source: 'classDiagram\n  class Book' },
+        'agent',
+      )
+      await updateDiagramSource(diagramId, 'classDiagram\n  class Book\n  class Loan', 'agent')
+      renderAt(`/projects/${projectId}/diagrams/${diagramId}?version=${v1}`)
+
+      expect(await screen.findByText(/viewing an earlier version/i)).toBeInTheDocument()
+      expect(screen.getByRole('region', { name: /version history/i })).toBeInTheDocument()
+      await vi.waitFor(() => expect(screen.getByTestId('mermaid-svg')).not.toHaveTextContent('class Loan'))
+    })
+
     it('does not draw diagrams while the reply is still being written and checked', async () => {
       const { projectId, chatSessionId } = await seedChat()
       await seedOllama()
@@ -431,7 +473,7 @@ describe('routes', () => {
           `/projects/${projectId}/diagrams/${diagramId}`,
         )
         const [message] = await db.messages.toArray()
-        expect(message.parts).toEqual([{ type: 'diagram-reference', diagramId }])
+        expect(message.parts).toEqual([{ type: 'diagram-reference', diagramId, versionId: expect.any(Number) }])
       })
 
       it('attaches images pasted into the message field', async () => {
@@ -510,7 +552,7 @@ describe('routes', () => {
 
       async function seedHistory() {
         const projectId = await seedProject()
-        const diagramId = await createDiagram({ projectId, type: 'class', name: 'Domain', source: v1 }, 'agent')
+        const { diagramId } = await createDiagram({ projectId, type: 'class', name: 'Domain', source: v1 }, 'agent')
         await updateDiagramSource(diagramId, v2, 'user')
         return { projectId, diagramId }
       }

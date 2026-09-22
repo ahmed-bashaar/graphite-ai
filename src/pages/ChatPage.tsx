@@ -16,7 +16,7 @@ import { readAttachment } from '../components/readAttachment.ts'
 import { useMermaid } from '../components/useMermaid.ts'
 import { useReplyProgress } from '../components/useReplyProgress.ts'
 import { db, type MessagePartRecord, type MessageRecord } from '../db.ts'
-import { diagramTypeLabel, MessagePart, parseReply, type AgentProgress } from '../lib/index.ts'
+import { diagramTypeLabel, diagramTypeOf, MessagePart, parseReply, type AgentProgress } from '../lib/index.ts'
 import { deleteChat } from '../mutations.ts'
 import { NotFound } from './NotFound.tsx'
 
@@ -377,35 +377,67 @@ function LiveReply({ progress }: { progress: AgentProgress }) {
 function Part({ part, projectId, who }: { part: MessagePartRecord; projectId?: number; who: 'user' | 'agent' }) {
   if (part.type === 'attachment') return <SentAttachment part={part} />
   if (part.type === 'diagram-reference') {
-    return who === 'user' ? (
-      <UserDiagramReference diagramId={part.diagramId} projectId={projectId} />
-    ) : (
-      <DiagramCard diagramId={part.diagramId} projectId={projectId} />
-    )
+    const Reference = who === 'user' ? UserDiagramReference : DiagramCard
+    return <Reference diagramId={part.diagramId} versionId={part.versionId} projectId={projectId} />
   }
   return <RenderedHtml of={new MessagePart(part.type, part.content)} className={markdownStyles} />
 }
 
-/** A diagram the user referenced: a compact link rather than a preview. */
-function UserDiagramReference({ diagramId, projectId }: { diagramId: number; projectId?: number }) {
-  const diagram = useLiveQuery(async () => (await db.diagrams.get(diagramId)) ?? null, [diagramId])
-  if (diagram === undefined) return null
-  if (diagram === null) return <p className="text-sm italic opacity-70">Diagram deleted</p>
-  return <SentDiagramReference name={diagram.name} href={`/projects/${projectId}/diagrams/${diagramId}`} />
+type ReferenceProps = { diagramId: number; versionId?: number; projectId?: number }
+
+/**
+ * The diagram a message referenced, as that message showed it: its pinned
+ * version, or the current source for references from before pinning.
+ * `earlier` is true when the diagram has changed since. Null if deleted.
+ */
+function useReferencedDiagram(diagramId: number, versionId?: number) {
+  return useLiveQuery(async () => {
+    const diagram = await db.diagrams.get(diagramId)
+    if (!diagram) return null
+    const version = versionId === undefined ? undefined : await db.diagramVersions.get(versionId)
+    const newest = version && (await db.diagramVersions.where({ diagramId }).last())
+    const source = version?.source ?? diagram.source
+    return { name: diagram.name, source, type: diagramTypeOf(source), earlier: !!version && newest?.id !== version.id }
+  }, [diagramId, versionId])
 }
 
-function DiagramCard({ diagramId, projectId }: { diagramId: number; projectId?: number }) {
-  const diagram = useLiveQuery(async () => (await db.diagrams.get(diagramId)) ?? null, [diagramId])
+const diagramHref = (projectId: number | undefined, diagramId: number, versionId: number | undefined, earlier: boolean) =>
+  `/projects/${projectId}/diagrams/${diagramId}${earlier ? `?version=${versionId}` : ''}`
+
+/** A diagram the user referenced: a compact link rather than a preview. */
+function UserDiagramReference({ diagramId, versionId, projectId }: ReferenceProps) {
+  const diagram = useReferencedDiagram(diagramId, versionId)
+  if (diagram === undefined) return null
+  if (diagram === null) return <p className="text-sm italic opacity-70">Diagram deleted</p>
+  return (
+    <SentDiagramReference
+      name={diagram.earlier ? `${diagram.name} (earlier version)` : diagram.name}
+      href={diagramHref(projectId, diagramId, versionId, diagram.earlier)}
+    />
+  )
+}
+
+function DiagramCard({ diagramId, versionId, projectId }: ReferenceProps) {
+  const diagram = useReferencedDiagram(diagramId, versionId)
   if (diagram === undefined) return null
   if (diagram === null) return <p className="text-sm italic text-zinc-500">Diagram deleted</p>
   return (
     <Link
-      to={`/projects/${projectId}/diagrams/${diagramId}`}
+      to={diagramHref(projectId, diagramId, versionId, diagram.earlier)}
       className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-white p-3 text-zinc-900 hover:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:hover:border-zinc-500"
     >
       <span className="flex items-baseline justify-between gap-3">
         <span className="truncate font-medium">{diagram.name}</span>
-        <span className="shrink-0 text-xs text-zinc-500">{diagramTypeLabel(diagram.type)} · Open</span>
+        <span className="shrink-0 text-xs text-zinc-500">
+          {diagram.earlier ? (
+            <span className="rounded-full bg-amber-100 px-1.5 text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+              Earlier version
+            </span>
+          ) : (
+            diagramTypeLabel(diagram.type)
+          )}{' '}
+          · Open
+        </span>
       </span>
       <DiagramPreview source={diagram.source} />
     </Link>
