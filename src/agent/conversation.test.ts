@@ -117,6 +117,24 @@ describe('conversation', () => {
     })
   })
 
+  it('records each diagram the agent creates or replaces as a version', async () => {
+    const { chatSessionId } = await seed()
+    ollamaReplies(
+      mermaid('Domain model', 'classDiagram\n  class Book'),
+      mermaid('Domain model', 'classDiagram\n  class Book\n  class Loan'),
+    )
+
+    await sendMessage(chatSessionId, 'Model a library')
+    await sendMessage(chatSessionId, 'Add loans')
+
+    const [diagram] = await db.diagrams.toArray()
+    const versions = await db.diagramVersions.where({ diagramId: diagram.id }).sortBy('id')
+    expect(versions.map((v) => [v.author, v.source.includes('class Loan')])).toEqual([
+      ['agent', false],
+      ['agent', true],
+    ])
+  })
+
   it('keeps other code blocks as code parts', async () => {
     const { chatSessionId } = await seed()
     ollamaReplies('```json\n{"a": 1}\n```')

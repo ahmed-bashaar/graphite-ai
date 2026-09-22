@@ -50,6 +50,20 @@ export interface DiagramRecord {
   source: string
 }
 
+/** Who saved a diagram version; `earlier` is a source from before version history existed. */
+export type VersionAuthor = 'agent' | 'user' | 'earlier'
+
+/** A saved state of a diagram's source. The newest one matches the diagram (up to renames). */
+export interface DiagramVersionRecord {
+  id: number
+  diagramId: number
+  source: string
+  savedAt: Date
+  author: VersionAuthor
+  /** Set when this version restored an older one. */
+  restoredFrom?: number
+}
+
 /** An app setting, stored by key (e.g. `'agent'`, see src/agent/settings.ts). */
 export interface SettingRecord {
   key: string
@@ -71,6 +85,7 @@ export const db = new Dexie('graphite-ai') as Dexie & {
   diagrams: EntityTable<DiagramRecord, 'id'>
   providers: EntityTable<ProviderRecord, 'id'>
   settings: EntityTable<SettingRecord, 'key'>
+  diagramVersions: EntityTable<DiagramVersionRecord, 'id'>
 }
 
 // Only primary keys and queried fields are listed; bump the version and add a
@@ -86,4 +101,7 @@ db.version(2).stores({
 })
 db.version(3).stores({
   settings: 'key',
+})
+db.version(4).stores({
+  diagramVersions: '++id, diagramId',
 })
