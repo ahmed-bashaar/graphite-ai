@@ -6378,8 +6378,48 @@
 								"$ref": "AAAAAAGgwr8oy/mY5io="
 							},
 							"name": "listModels"
+						},
+						{
+							"_type": "UMLOperation",
+							"_id": "AAAAAAGajefvmeVUR6Q=",
+							"_parent": {
+								"$ref": "AAAAAAGgwr8oy/mY5io="
+							},
+							"name": "learned",
+							"visibility": "protected",
+							"documentation": "What has been learned about a model (e.g. it rejects tools), shared across replies.",
+							"parameters": [
+								{
+									"_type": "UMLParameter",
+									"_id": "AAAAAAGaikiuf5z6rw4=",
+									"_parent": {
+										"$ref": "AAAAAAGajefvmeVUR6Q="
+									},
+									"name": "key",
+									"type": "string"
+								},
+								{
+									"_type": "UMLParameter",
+									"_id": "AAAAAAGaIQkRYmfnzek=",
+									"_parent": {
+										"$ref": "AAAAAAGajefvmeVUR6Q="
+									},
+									"name": "initial",
+									"type": "() => T"
+								},
+								{
+									"_type": "UMLParameter",
+									"_id": "AAAAAAGak4X75D7Xwsg=",
+									"_parent": {
+										"$ref": "AAAAAAGajefvmeVUR6Q="
+									},
+									"type": "T",
+									"direction": "return"
+								}
+							]
 						}
-					]
+					],
+					"isAbstract": true
 				},
 				{
 					"_type": "UMLClass",
@@ -6446,6 +6486,58 @@
 								},
 								"aggregation": "shared"
 							}
+						},
+						{
+							"_type": "UMLDependency",
+							"_id": "AAAAAAGa1aTAEGF/GRE=",
+							"source": {
+								"$ref": "AAAAAAGgwr9LI/nDuVc="
+							},
+							"target": {
+								"$ref": "AAAAAAGazNwae3DGKKc="
+							},
+							"_parent": {
+								"$ref": "AAAAAAGgwr9LI/nDuVc="
+							}
+						},
+						{
+							"_type": "UMLDependency",
+							"_id": "AAAAAAGa1RWJXJGHz2w=",
+							"source": {
+								"$ref": "AAAAAAGgwr9LI/nDuVc="
+							},
+							"target": {
+								"$ref": "AAAAAAGae5ay0etHoA0="
+							},
+							"_parent": {
+								"$ref": "AAAAAAGgwr9LI/nDuVc="
+							}
+						},
+						{
+							"_type": "UMLDependency",
+							"_id": "AAAAAAGa/7ZvqAWvr+4=",
+							"source": {
+								"$ref": "AAAAAAGgwr9LI/nDuVc="
+							},
+							"target": {
+								"$ref": "AAAAAAGai6UvOfPsrBQ="
+							},
+							"_parent": {
+								"$ref": "AAAAAAGgwr9LI/nDuVc="
+							}
+						},
+						{
+							"_type": "UMLDependency",
+							"_id": "AAAAAAGaXnqfY+7vzsI=",
+							"source": {
+								"$ref": "AAAAAAGgwr9LI/nDuVc="
+							},
+							"target": {
+								"$ref": "AAAAAAGgwsWvigeX6oE="
+							},
+							"_parent": {
+								"$ref": "AAAAAAGgwr9LI/nDuVc="
+							}
 						}
 					],
 					"attributes": [
@@ -6457,6 +6549,65 @@
 							},
 							"name": "name",
 							"type": ""
+						}
+					],
+					"isAbstract": true,
+					"operations": [
+						{
+							"_type": "UMLOperation",
+							"_id": "AAAAAAGazitXWlLZnj4=",
+							"_parent": {
+								"$ref": "AAAAAAGgwr9LI/nDuVc="
+							},
+							"name": "step",
+							"isAbstract": true,
+							"documentation": "Streams one model turn; the provider maps the neutral turns to its API. Does not loop.",
+							"parameters": [
+								{
+									"_type": "UMLParameter",
+									"_id": "AAAAAAGa3C1qY1erZX8=",
+									"_parent": {
+										"$ref": "AAAAAAGazitXWlLZnj4="
+									},
+									"name": "turns",
+									"type": {
+										"$ref": "AAAAAAGazNwae3DGKKc="
+									}
+								},
+								{
+									"_type": "UMLParameter",
+									"_id": "AAAAAAGaw9xRHg8fJyM=",
+									"_parent": {
+										"$ref": "AAAAAAGazitXWlLZnj4="
+									},
+									"name": "tools",
+									"type": {
+										"$ref": "AAAAAAGgwsWvigeX6oE="
+									}
+								},
+								{
+									"_type": "UMLParameter",
+									"_id": "AAAAAAGaEH+3PmH/cWg=",
+									"_parent": {
+										"$ref": "AAAAAAGazitXWlLZnj4="
+									},
+									"name": "options",
+									"type": {
+										"$ref": "AAAAAAGai6UvOfPsrBQ="
+									}
+								},
+								{
+									"_type": "UMLParameter",
+									"_id": "AAAAAAGaYxl3R+TOHOQ=",
+									"_parent": {
+										"$ref": "AAAAAAGazitXWlLZnj4="
+									},
+									"type": {
+										"$ref": "AAAAAAGae5ay0etHoA0="
+									},
+									"direction": "return"
+								}
+							]
 						}
 					]
 				},
@@ -6494,6 +6645,45 @@
 									"$ref": "AAAAAAGgwsdqxBW2gtQ="
 								}
 							}
+						},
+						{
+							"_type": "UMLDependency",
+							"_id": "AAAAAAGao13MasYiq7E=",
+							"source": {
+								"$ref": "AAAAAAGgwsNIavvmZOM="
+							},
+							"target": {
+								"$ref": "AAAAAAGa3yXWifQLqTI="
+							},
+							"_parent": {
+								"$ref": "AAAAAAGgwsNIavvmZOM="
+							}
+						},
+						{
+							"_type": "UMLDependency",
+							"_id": "AAAAAAGab24xeR4ZdKk=",
+							"source": {
+								"$ref": "AAAAAAGgwsNIavvmZOM="
+							},
+							"target": {
+								"$ref": "AAAAAAGa7KPTRYt31p8="
+							},
+							"_parent": {
+								"$ref": "AAAAAAGgwsNIavvmZOM="
+							}
+						},
+						{
+							"_type": "UMLDependency",
+							"_id": "AAAAAAGaEu8Uzi1pHu8=",
+							"source": {
+								"$ref": "AAAAAAGgwsNIavvmZOM="
+							},
+							"target": {
+								"$ref": "AAAAAAGaNAb3lSqBq0E="
+							},
+							"_parent": {
+								"$ref": "AAAAAAGgwsNIavvmZOM="
+							}
 						}
 					],
 					"attributes": [
@@ -6513,6 +6703,18 @@
 								"$ref": "AAAAAAGgwsNIavvmZOM="
 							},
 							"name": "systemPrompt"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGa/Mwlk2k5ht8=",
+							"_parent": {
+								"$ref": "AAAAAAGgwsNIavvmZOM="
+							},
+							"name": "options",
+							"type": {
+								"$ref": "AAAAAAGaToJPqdhUEtI="
+							},
+							"visibility": "private"
 						}
 					],
 					"operations": [
@@ -6534,8 +6736,71 @@
 									"type": ""
 								}
 							]
+						},
+						{
+							"_type": "UMLOperation",
+							"_id": "AAAAAAGa0t+V4ZNmHtg=",
+							"_parent": {
+								"$ref": "AAAAAAGgwsNIavvmZOM="
+							},
+							"name": "attach",
+							"parameters": [
+								{
+									"_type": "UMLParameter",
+									"_id": "AAAAAAGaNhpnAYsfhD0=",
+									"_parent": {
+										"$ref": "AAAAAAGa0t+V4ZNmHtg="
+									},
+									"name": "session",
+									"type": {
+										"$ref": "AAAAAAGgwsdqxBW2gtQ="
+									}
+								}
+							]
+						},
+						{
+							"_type": "UMLOperation",
+							"_id": "AAAAAAGaNFcwa5Zk1vI=",
+							"_parent": {
+								"$ref": "AAAAAAGgwsNIavvmZOM="
+							},
+							"name": "detach"
+						},
+						{
+							"_type": "UMLOperation",
+							"_id": "AAAAAAGaWSw4Kb202n0=",
+							"_parent": {
+								"$ref": "AAAAAAGgwsNIavvmZOM="
+							},
+							"name": "runTool",
+							"visibility": "private",
+							"parameters": [
+								{
+									"_type": "UMLParameter",
+									"_id": "AAAAAAGaQ5dgF4UyhVY=",
+									"_parent": {
+										"$ref": "AAAAAAGaWSw4Kb202n0="
+									},
+									"name": "call",
+									"type": {
+										"$ref": "AAAAAAGa7KPTRYt31p8="
+									}
+								},
+								{
+									"_type": "UMLParameter",
+									"_id": "AAAAAAGay7yFBDGy+Ss=",
+									"_parent": {
+										"$ref": "AAAAAAGaWSw4Kb202n0="
+									},
+									"type": {
+										"$ref": "AAAAAAGaNAb3lSqBq0E="
+									},
+									"direction": "return"
+								}
+							]
 						}
-					]
+					],
+					"documentation": "respond() loops: ask the LlmModel for a step, run the AgenticTools it calls, feed the results back, until it answers. The answer is checked (checkAnswer) and sent back for revision if it fails. At most maxSteps model calls. Progress is reported to the ChatSession as AgentProgress."
 				},
 				{
 					"_type": "UMLClass",
@@ -6625,6 +6890,25 @@
 									},
 									"name": "args",
 									"type": ""
+								}
+							]
+						},
+						{
+							"_type": "UMLOperation",
+							"_id": "AAAAAAGaOERJ65zhycU=",
+							"_parent": {
+								"$ref": "AAAAAAGgwsWvigeX6oE="
+							},
+							"name": "inputSchema",
+							"parameters": [
+								{
+									"_type": "UMLParameter",
+									"_id": "AAAAAAGarQapTyvtKUY=",
+									"_parent": {
+										"$ref": "AAAAAAGaOERJ65zhycU="
+									},
+									"type": "JsonSchema",
+									"direction": "return"
 								}
 							]
 						}
@@ -6799,6 +7083,19 @@
 							"target": {
 								"$ref": "AAAAAAGgw0EO/aAXhrk="
 							}
+						},
+						{
+							"_type": "UMLDependency",
+							"_id": "AAAAAAGaureMDkStaCk=",
+							"source": {
+								"$ref": "AAAAAAGgwsdqxBW2gtQ="
+							},
+							"target": {
+								"$ref": "AAAAAAGa3yXWifQLqTI="
+							},
+							"_parent": {
+								"$ref": "AAAAAAGgwsdqxBW2gtQ="
+							}
 						}
 					],
 					"attributes": [
@@ -6839,8 +7136,49 @@
 								"$ref": "AAAAAAGgwsdqxBW2gtQ="
 							},
 							"name": "send"
+						},
+						{
+							"_type": "UMLOperation",
+							"_id": "AAAAAAGabZM+lG4imDg=",
+							"_parent": {
+								"$ref": "AAAAAAGgwsdqxBW2gtQ="
+							},
+							"name": "reportError",
+							"parameters": [
+								{
+									"_type": "UMLParameter",
+									"_id": "AAAAAAGa1Ok+afGuDlk=",
+									"_parent": {
+										"$ref": "AAAAAAGabZM+lG4imDg="
+									},
+									"name": "error",
+									"type": "unknown"
+								}
+							]
+						},
+						{
+							"_type": "UMLOperation",
+							"_id": "AAAAAAGaUehHq61Tsf8=",
+							"_parent": {
+								"$ref": "AAAAAAGgwsdqxBW2gtQ="
+							},
+							"name": "reportProgress",
+							"parameters": [
+								{
+									"_type": "UMLParameter",
+									"_id": "AAAAAAGaDp1r10eLlNU=",
+									"_parent": {
+										"$ref": "AAAAAAGaUehHq61Tsf8="
+									},
+									"name": "progress",
+									"type": {
+										"$ref": "AAAAAAGa3yXWifQLqTI="
+									}
+								}
+							]
 						}
-					]
+					],
+					"documentation": "Emits message, draft, error and progress (AgentProgress) events."
 				},
 				{
 					"_type": "UMLClass",
@@ -7356,7 +7694,8 @@
 							"name": "content",
 							"type": ""
 						}
-					]
+					],
+					"documentation": "type is \"text\" | \"code\" | \"diagram-reference\" | \"attachment\"."
 				},
 				{
 					"_type": "UMLClass",
@@ -7628,6 +7967,776 @@
 									"type": ""
 								}
 							]
+						}
+					]
+				},
+				{
+					"_type": "UMLEnumeration",
+					"_id": "AAAAAAGatyYKmSgtzv4=",
+					"_parent": {
+						"$ref": "AAAAAAFF+qBWK6M3Z8Y="
+					},
+					"name": "AttachmentKind",
+					"literals": [
+						{
+							"_type": "UMLEnumerationLiteral",
+							"_id": "AAAAAAGai/Ot3PlhSsQ=",
+							"_parent": {
+								"$ref": "AAAAAAGatyYKmSgtzv4="
+							},
+							"name": "image"
+						},
+						{
+							"_type": "UMLEnumerationLiteral",
+							"_id": "AAAAAAGafuB8hCJal6g=",
+							"_parent": {
+								"$ref": "AAAAAAGatyYKmSgtzv4="
+							},
+							"name": "pdf"
+						},
+						{
+							"_type": "UMLEnumerationLiteral",
+							"_id": "AAAAAAGaA4zI4MCF+YA=",
+							"_parent": {
+								"$ref": "AAAAAAGatyYKmSgtzv4="
+							},
+							"name": "text"
+						}
+					]
+				},
+				{
+					"_type": "UMLClass",
+					"_id": "AAAAAAGa7KPTRYt31p8=",
+					"_parent": {
+						"$ref": "AAAAAAFF+qBWK6M3Z8Y="
+					},
+					"name": "ToolCall",
+					"stereotype": "dataType",
+					"documentation": "A tool the model asked to run; id pairs it with its result.",
+					"attributes": [
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGa8TjKzteZb7A=",
+							"_parent": {
+								"$ref": "AAAAAAGa7KPTRYt31p8="
+							},
+							"name": "id",
+							"type": "string"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGaXBjxhQZpedM=",
+							"_parent": {
+								"$ref": "AAAAAAGa7KPTRYt31p8="
+							},
+							"name": "name",
+							"type": "string"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGaXrxh/QCd26U=",
+							"_parent": {
+								"$ref": "AAAAAAGa7KPTRYt31p8="
+							},
+							"name": "args",
+							"type": "Args"
+						}
+					],
+					"ownedElements": [
+						{
+							"_type": "UMLAssociation",
+							"_id": "AAAAAAGaAjiOB7giv5E=",
+							"name": "toolCalls",
+							"end1": {
+								"_type": "UMLAssociationEnd",
+								"_id": "AAAAAAGa/OncI0dT9Wo=",
+								"_parent": {
+									"$ref": "AAAAAAGaAjiOB7giv5E="
+								},
+								"reference": {
+									"$ref": "AAAAAAGa7KPTRYt31p8="
+								},
+								"multiplicity": "0..*"
+							},
+							"end2": {
+								"_type": "UMLAssociationEnd",
+								"_id": "AAAAAAGahSGdvmIlzCA=",
+								"_parent": {
+									"$ref": "AAAAAAGaAjiOB7giv5E="
+								},
+								"reference": {
+									"$ref": "AAAAAAGazNwae3DGKKc="
+								},
+								"aggregation": "shared"
+							},
+							"_parent": {
+								"$ref": "AAAAAAGa7KPTRYt31p8="
+							}
+						},
+						{
+							"_type": "UMLAssociation",
+							"_id": "AAAAAAGa0vGgdOBU+B0=",
+							"name": "toolCalls",
+							"end1": {
+								"_type": "UMLAssociationEnd",
+								"_id": "AAAAAAGaPR/DnfHIg+s=",
+								"_parent": {
+									"$ref": "AAAAAAGa0vGgdOBU+B0="
+								},
+								"reference": {
+									"$ref": "AAAAAAGa7KPTRYt31p8="
+								},
+								"multiplicity": "0..*"
+							},
+							"end2": {
+								"_type": "UMLAssociationEnd",
+								"_id": "AAAAAAGarA85Er2ZGwE=",
+								"_parent": {
+									"$ref": "AAAAAAGa0vGgdOBU+B0="
+								},
+								"reference": {
+									"$ref": "AAAAAAGae5ay0etHoA0="
+								},
+								"aggregation": "shared"
+							},
+							"_parent": {
+								"$ref": "AAAAAAGa7KPTRYt31p8="
+							}
+						}
+					]
+				},
+				{
+					"_type": "UMLClass",
+					"_id": "AAAAAAGaNAb3lSqBq0E=",
+					"_parent": {
+						"$ref": "AAAAAAFF+qBWK6M3Z8Y="
+					},
+					"name": "ToolResult",
+					"stereotype": "dataType",
+					"attributes": [
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGaS8JaPDTpvZ4=",
+							"_parent": {
+								"$ref": "AAAAAAGaNAb3lSqBq0E="
+							},
+							"name": "callId",
+							"type": "string"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGaTp71a78eMzs=",
+							"_parent": {
+								"$ref": "AAAAAAGaNAb3lSqBq0E="
+							},
+							"name": "name",
+							"type": "string"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGaDLgmGV6mh3Y=",
+							"_parent": {
+								"$ref": "AAAAAAGaNAb3lSqBq0E="
+							},
+							"name": "content",
+							"type": "string"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGaclDqCOujJqw=",
+							"_parent": {
+								"$ref": "AAAAAAGaNAb3lSqBq0E="
+							},
+							"name": "isError",
+							"type": "boolean",
+							"multiplicity": "0..1"
+						}
+					],
+					"ownedElements": [
+						{
+							"_type": "UMLAssociation",
+							"_id": "AAAAAAGaK5vzwZkcosw=",
+							"name": "results",
+							"end1": {
+								"_type": "UMLAssociationEnd",
+								"_id": "AAAAAAGablytO3Kqonc=",
+								"_parent": {
+									"$ref": "AAAAAAGaK5vzwZkcosw="
+								},
+								"reference": {
+									"$ref": "AAAAAAGaNAb3lSqBq0E="
+								},
+								"multiplicity": "0..*"
+							},
+							"end2": {
+								"_type": "UMLAssociationEnd",
+								"_id": "AAAAAAGaRpqXkjPUHAg=",
+								"_parent": {
+									"$ref": "AAAAAAGaK5vzwZkcosw="
+								},
+								"reference": {
+									"$ref": "AAAAAAGazNwae3DGKKc="
+								},
+								"aggregation": "shared"
+							},
+							"_parent": {
+								"$ref": "AAAAAAGaNAb3lSqBq0E="
+							}
+						}
+					]
+				},
+				{
+					"_type": "UMLClass",
+					"_id": "AAAAAAGa4KQ5n1ySKF4=",
+					"_parent": {
+						"$ref": "AAAAAAFF+qBWK6M3Z8Y="
+					},
+					"name": "TurnAttachment",
+					"stereotype": "dataType",
+					"documentation": "An image or PDF for the model to see natively (text files are inlined instead).",
+					"attributes": [
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGay1G9k8C+3I4=",
+							"_parent": {
+								"$ref": "AAAAAAGa4KQ5n1ySKF4="
+							},
+							"name": "name",
+							"type": "string"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGa99JIWEHPHyo=",
+							"_parent": {
+								"$ref": "AAAAAAGa4KQ5n1ySKF4="
+							},
+							"name": "mediaType",
+							"type": "string"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGasZIyaPiPrY4=",
+							"_parent": {
+								"$ref": "AAAAAAGa4KQ5n1ySKF4="
+							},
+							"name": "data",
+							"type": "string"
+						}
+					],
+					"ownedElements": [
+						{
+							"_type": "UMLAssociation",
+							"_id": "AAAAAAGaTgN+mD/yi3w=",
+							"name": "attachments",
+							"end1": {
+								"_type": "UMLAssociationEnd",
+								"_id": "AAAAAAGajkOTZJRHL1w=",
+								"_parent": {
+									"$ref": "AAAAAAGaTgN+mD/yi3w="
+								},
+								"reference": {
+									"$ref": "AAAAAAGa4KQ5n1ySKF4="
+								},
+								"multiplicity": "0..*"
+							},
+							"end2": {
+								"_type": "UMLAssociationEnd",
+								"_id": "AAAAAAGacUDhvnuPdjM=",
+								"_parent": {
+									"$ref": "AAAAAAGaTgN+mD/yi3w="
+								},
+								"reference": {
+									"$ref": "AAAAAAGazNwae3DGKKc="
+								},
+								"aggregation": "shared"
+							},
+							"_parent": {
+								"$ref": "AAAAAAGa4KQ5n1ySKF4="
+							}
+						}
+					]
+				},
+				{
+					"_type": "UMLClass",
+					"_id": "AAAAAAGazNwae3DGKKc=",
+					"_parent": {
+						"$ref": "AAAAAAFF+qBWK6M3Z8Y="
+					},
+					"name": "ChatTurn",
+					"stereotype": "dataType",
+					"documentation": "One turn of the provider-neutral transcript the agent loop builds (a union in code: user/assistant text turns, assistant turns with tool calls, and tool turns with results). native is the provider's own record of an assistant turn, replayed unchanged: Anthropic content blocks (thinking signatures) or OpenAI-style tool calls with extra fields (Gemini thought signatures).",
+					"attributes": [
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGarSACqtwgQNw=",
+							"_parent": {
+								"$ref": "AAAAAAGazNwae3DGKKc="
+							},
+							"name": "role",
+							"type": "\"user\" | \"assistant\" | \"tool\""
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGaM5FVjD5DwHY=",
+							"_parent": {
+								"$ref": "AAAAAAGazNwae3DGKKc="
+							},
+							"name": "content",
+							"type": "string",
+							"multiplicity": "0..1"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGaVMhqG66Wzuk=",
+							"_parent": {
+								"$ref": "AAAAAAGazNwae3DGKKc="
+							},
+							"name": "toolCalls",
+							"type": {
+								"$ref": "AAAAAAGa7KPTRYt31p8="
+							},
+							"multiplicity": "0..*"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGawPBfrCQwy+M=",
+							"_parent": {
+								"$ref": "AAAAAAGazNwae3DGKKc="
+							},
+							"name": "results",
+							"type": {
+								"$ref": "AAAAAAGaNAb3lSqBq0E="
+							},
+							"multiplicity": "0..*"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGaj9nPqxL3aXI=",
+							"_parent": {
+								"$ref": "AAAAAAGazNwae3DGKKc="
+							},
+							"name": "attachments",
+							"type": {
+								"$ref": "AAAAAAGa4KQ5n1ySKF4="
+							},
+							"multiplicity": "0..*"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGa2cP0PAJfFIU=",
+							"_parent": {
+								"$ref": "AAAAAAGazNwae3DGKKc="
+							},
+							"name": "native",
+							"type": "any",
+							"multiplicity": "0..1"
+						}
+					]
+				},
+				{
+					"_type": "UMLClass",
+					"_id": "AAAAAAGae5ay0etHoA0=",
+					"_parent": {
+						"$ref": "AAAAAAFF+qBWK6M3Z8Y="
+					},
+					"name": "ModelStep",
+					"stereotype": "dataType",
+					"documentation": "One model turn: its text, and the tools it wants to run (none means it is done).",
+					"attributes": [
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGaPeTCWmzjmDc=",
+							"_parent": {
+								"$ref": "AAAAAAGae5ay0etHoA0="
+							},
+							"name": "text",
+							"type": "string"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGa/8eNkjcNY5Y=",
+							"_parent": {
+								"$ref": "AAAAAAGae5ay0etHoA0="
+							},
+							"name": "toolCalls",
+							"type": {
+								"$ref": "AAAAAAGa7KPTRYt31p8="
+							},
+							"multiplicity": "0..*"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGaSere9Zv/xqo=",
+							"_parent": {
+								"$ref": "AAAAAAGae5ay0etHoA0="
+							},
+							"name": "native",
+							"type": "any",
+							"multiplicity": "0..1"
+						}
+					]
+				},
+				{
+					"_type": "UMLClass",
+					"_id": "AAAAAAGai6UvOfPsrBQ=",
+					"_parent": {
+						"$ref": "AAAAAAFF+qBWK6M3Z8Y="
+					},
+					"name": "StepOptions",
+					"stereotype": "dataType",
+					"attributes": [
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGaHYI/XpYUHg4=",
+							"_parent": {
+								"$ref": "AAAAAAGai6UvOfPsrBQ="
+							},
+							"name": "systemPrompt",
+							"type": "string",
+							"multiplicity": "0..1"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGac9F+MBbNBLI=",
+							"_parent": {
+								"$ref": "AAAAAAGai6UvOfPsrBQ="
+							},
+							"name": "onText",
+							"type": "(delta: string) => void",
+							"multiplicity": "0..1"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGarV2jcGssEYY=",
+							"_parent": {
+								"$ref": "AAAAAAGai6UvOfPsrBQ="
+							},
+							"name": "onThinking",
+							"type": "(delta: string) => void",
+							"multiplicity": "0..1"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGaFlNzb3UbzKc=",
+							"_parent": {
+								"$ref": "AAAAAAGai6UvOfPsrBQ="
+							},
+							"name": "signal",
+							"type": "AbortSignal",
+							"multiplicity": "0..1"
+						}
+					]
+				},
+				{
+					"_type": "UMLClass",
+					"_id": "AAAAAAGaZ8afBn613bc=",
+					"_parent": {
+						"$ref": "AAAAAAFF+qBWK6M3Z8Y="
+					},
+					"name": "AgentStep",
+					"stereotype": "dataType",
+					"documentation": "Something the agent did before answering (a union in code, by kind).",
+					"attributes": [
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGaDiLsBD6WVic=",
+							"_parent": {
+								"$ref": "AAAAAAGaZ8afBn613bc="
+							},
+							"name": "kind",
+							"type": "\"thinking\" | \"note\" | \"tool\" | \"check\""
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGajK4nrws2yBU=",
+							"_parent": {
+								"$ref": "AAAAAAGaZ8afBn613bc="
+							},
+							"name": "text",
+							"type": "string",
+							"multiplicity": "0..1"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGaE1gmWhOBOdI=",
+							"_parent": {
+								"$ref": "AAAAAAGaZ8afBn613bc="
+							},
+							"name": "name",
+							"type": "string",
+							"multiplicity": "0..1"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGaI16UgB5aqwU=",
+							"_parent": {
+								"$ref": "AAAAAAGaZ8afBn613bc="
+							},
+							"name": "args",
+							"type": "Args",
+							"multiplicity": "0..1"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGaO5sr+Uk1FGc=",
+							"_parent": {
+								"$ref": "AAAAAAGaZ8afBn613bc="
+							},
+							"name": "result",
+							"type": "string",
+							"multiplicity": "0..1"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGauJQdUdeEKOU=",
+							"_parent": {
+								"$ref": "AAAAAAGaZ8afBn613bc="
+							},
+							"name": "isError",
+							"type": "boolean",
+							"multiplicity": "0..1"
+						}
+					],
+					"ownedElements": [
+						{
+							"_type": "UMLAssociation",
+							"_id": "AAAAAAGa2UkRtJTExAM=",
+							"name": "steps",
+							"end1": {
+								"_type": "UMLAssociationEnd",
+								"_id": "AAAAAAGacDpehcv6Lk0=",
+								"_parent": {
+									"$ref": "AAAAAAGa2UkRtJTExAM="
+								},
+								"reference": {
+									"$ref": "AAAAAAGaZ8afBn613bc="
+								},
+								"multiplicity": "0..*"
+							},
+							"end2": {
+								"_type": "UMLAssociationEnd",
+								"_id": "AAAAAAGaBOq5hGQbHh8=",
+								"_parent": {
+									"$ref": "AAAAAAGa2UkRtJTExAM="
+								},
+								"reference": {
+									"$ref": "AAAAAAGa3yXWifQLqTI="
+								},
+								"aggregation": "composite"
+							},
+							"_parent": {
+								"$ref": "AAAAAAGaZ8afBn613bc="
+							}
+						}
+					]
+				},
+				{
+					"_type": "UMLClass",
+					"_id": "AAAAAAGa3yXWifQLqTI=",
+					"_parent": {
+						"$ref": "AAAAAAFF+qBWK6M3Z8Y="
+					},
+					"name": "AgentProgress",
+					"stereotype": "dataType",
+					"documentation": "A reply in the making: the work so far, and the answer text streaming in.",
+					"attributes": [
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGaiBUNe7R3/78=",
+							"_parent": {
+								"$ref": "AAAAAAGa3yXWifQLqTI="
+							},
+							"name": "steps",
+							"type": {
+								"$ref": "AAAAAAGaZ8afBn613bc="
+							},
+							"multiplicity": "0..*"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGaBC3UgsKrrtI=",
+							"_parent": {
+								"$ref": "AAAAAAGa3yXWifQLqTI="
+							},
+							"name": "draft",
+							"type": "string"
+						}
+					]
+				},
+				{
+					"_type": "UMLClass",
+					"_id": "AAAAAAGaToJPqdhUEtI=",
+					"_parent": {
+						"$ref": "AAAAAAFF+qBWK6M3Z8Y="
+					},
+					"name": "AiAgentOptions",
+					"stereotype": "dataType",
+					"attributes": [
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGaPbrcsW+hQaQ=",
+							"_parent": {
+								"$ref": "AAAAAAGaToJPqdhUEtI="
+							},
+							"name": "maxSteps",
+							"type": "number",
+							"defaultValue": "12"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGalfwbcYXhM1k=",
+							"_parent": {
+								"$ref": "AAAAAAGaToJPqdhUEtI="
+							},
+							"name": "checkAnswer",
+							"type": "(answer: string) => string | null",
+							"multiplicity": "0..1"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGaNpy5p2oWI9Y=",
+							"_parent": {
+								"$ref": "AAAAAAGaToJPqdhUEtI="
+							},
+							"name": "signal",
+							"type": "AbortSignal",
+							"multiplicity": "0..1"
+						}
+					],
+					"ownedElements": [
+						{
+							"_type": "UMLAssociation",
+							"_id": "AAAAAAGaJbKTu728BCM=",
+							"name": "options",
+							"end1": {
+								"_type": "UMLAssociationEnd",
+								"_id": "AAAAAAGalUroXnnyvQo=",
+								"_parent": {
+									"$ref": "AAAAAAGaJbKTu728BCM="
+								},
+								"reference": {
+									"$ref": "AAAAAAGaToJPqdhUEtI="
+								},
+								"navigable": "navigable"
+							},
+							"end2": {
+								"_type": "UMLAssociationEnd",
+								"_id": "AAAAAAGaGRVQES1SJr0=",
+								"_parent": {
+									"$ref": "AAAAAAGaJbKTu728BCM="
+								},
+								"reference": {
+									"$ref": "AAAAAAGgwsNIavvmZOM="
+								},
+								"navigable": "nonnavigable"
+							},
+							"_parent": {
+								"$ref": "AAAAAAGaToJPqdhUEtI="
+							}
+						}
+					]
+				},
+				{
+					"_type": "UMLClass",
+					"_id": "AAAAAAGazEqIm6JP19g=",
+					"_parent": {
+						"$ref": "AAAAAAFF+qBWK6M3Z8Y="
+					},
+					"name": "Attachment",
+					"documentation": "A file the user attached to a message. Images and PDFs reach the model natively; text files are inlined into the message text. The constructor rejects other kinds of file, and data that is not plain base64.",
+					"attributes": [
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGaGTqzH3d5MdQ=",
+							"_parent": {
+								"$ref": "AAAAAAGazEqIm6JP19g="
+							},
+							"name": "name",
+							"type": "string"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGatnpmtr4+QLg=",
+							"_parent": {
+								"$ref": "AAAAAAGazEqIm6JP19g="
+							},
+							"name": "mediaType",
+							"type": "string"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGaOS5IzXnEw7w=",
+							"_parent": {
+								"$ref": "AAAAAAGazEqIm6JP19g="
+							},
+							"name": "data",
+							"type": "string"
+						},
+						{
+							"_type": "UMLAttribute",
+							"_id": "AAAAAAGacEJuGJtB4r8=",
+							"_parent": {
+								"$ref": "AAAAAAGazEqIm6JP19g="
+							},
+							"name": "kind",
+							"type": {
+								"$ref": "AAAAAAGatyYKmSgtzv4="
+							}
+						}
+					],
+					"operations": [
+						{
+							"_type": "UMLOperation",
+							"_id": "AAAAAAGahWV7ihbw4Jw=",
+							"_parent": {
+								"$ref": "AAAAAAGazEqIm6JP19g="
+							},
+							"name": "text",
+							"parameters": [
+								{
+									"_type": "UMLParameter",
+									"_id": "AAAAAAGamoP2DCO81ks=",
+									"_parent": {
+										"$ref": "AAAAAAGahWV7ihbw4Jw="
+									},
+									"type": "string",
+									"direction": "return"
+								}
+							]
+						},
+						{
+							"_type": "UMLOperation",
+							"_id": "AAAAAAGaFJB4+hoC4A4=",
+							"_parent": {
+								"$ref": "AAAAAAGazEqIm6JP19g="
+							},
+							"name": "render",
+							"parameters": [
+								{
+									"_type": "UMLParameter",
+									"_id": "AAAAAAGa1oZqOwsXokk=",
+									"_parent": {
+										"$ref": "AAAAAAGaFJB4+hoC4A4="
+									},
+									"type": "string",
+									"direction": "return"
+								}
+							]
+						}
+					],
+					"ownedElements": [
+						{
+							"_type": "UMLGeneralization",
+							"_id": "AAAAAAGajmKIlR4f5PI=",
+							"source": {
+								"$ref": "AAAAAAGazEqIm6JP19g="
+							},
+							"target": {
+								"$ref": "AAAAAAGgww90M1u9auc="
+							},
+							"_parent": {
+								"$ref": "AAAAAAGazEqIm6JP19g="
+							}
 						}
 					]
 				}
