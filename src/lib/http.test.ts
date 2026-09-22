@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readLines, readServerSentEvents, request } from './http.ts'
+import { HttpError, readLines, readServerSentEvents, request } from './http.ts'
 
 /** A response whose body arrives in the given chunks. */
 function chunked(...chunks: string[]) {
@@ -45,5 +45,14 @@ describe('request', () => {
     ['Gemini', [{ error: { code: 404, message: 'Model retired' } }], 'Model retired'],
   ])('reports %s-style errors with the server message', async (_style, body, message) => {
     await expect(request(failing(body), 'http://x.test')).rejects.toThrow(`404 Not Found: ${message}`)
+  })
+})
+
+describe('HttpError', () => {
+  it('carries the response status', async () => {
+    const failing = async () => new Response(JSON.stringify({ error: 'nope' }), { status: 400, statusText: 'Bad Request' })
+    const error = await request(failing, 'http://x.test').catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(HttpError)
+    expect(error).toMatchObject({ status: 400, message: '400 Bad Request: nope' })
   })
 })

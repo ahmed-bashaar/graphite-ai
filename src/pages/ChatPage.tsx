@@ -329,6 +329,14 @@ function ChatMessage({ message, projectId }: { message: MessageRecord; projectId
         {message.parts.map((part, i) => (
           <Part key={i} part={part} projectId={projectId} who={who} />
         ))}
+        {message.stopped && (
+          <p className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+            <svg viewBox="0 0 20 20" className="size-3" fill="currentColor" aria-hidden="true">
+              <rect x="4" y="4" width="12" height="12" rx="2" />
+            </svg>
+            Stopped
+          </p>
+        )}
       </div>
     </motion.article>
   )

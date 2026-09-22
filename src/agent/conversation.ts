@@ -15,11 +15,13 @@ import {
   Message,
   MessagePart,
   parseReply,
+  type AgentProgress,
   type AgentStep,
 } from '../lib/index.ts'
 import { providerKinds } from '../providers.ts'
 import { NEW_CHAT_TITLE, titleFrom } from './chatTitle.ts'
 import { endReply, startReply, updateReply } from './replies.ts'
+import { loadAgentSettings } from './settings.ts'
 import { AGENT_NAME, SYSTEM_PROMPT } from './systemPrompt.ts'
 import { checkDiagrams, diagramTools, sameName } from './tools.ts'
 
@@ -77,6 +79,7 @@ export async function reply(chatSessionId: number): Promise<void> {
 
   const controller = startReply(chatSessionId)
   if (!controller) return // Already being answered.
+  let progress: AgentProgress = { steps: [], draft: '' }
   try {
     const diagrams = await db.diagrams.where({ projectId: session.projectId }).toArray()
     const history = records.map((record) => toMessage(record, diagrams))
@@ -84,12 +87,13 @@ export async function reply(chatSessionId: number): Promise<void> {
     // The agent reacts to the session's `message` event rather than being called directly.
     const chat = new ChatSession()
     chat.messages = history.slice(0, -1)
-    let steps: AgentStep[] = []
-    chat.on('progress', (progress) => {
-      steps = progress.steps
-      updateReply(chatSessionId, progress)
+    chat.on('progress', (update) => {
+      progress = update
+      updateReply(chatSessionId, update)
     })
+    const { maxSteps } = await loadAgentSettings()
     const agent = new AiAgent(AGENT_NAME, model, diagramTools(session.projectId), SYSTEM_PROMPT, {
+      maxSteps,
       checkAnswer: checkDiagrams,
       signal: controller.signal,
     })
@@ -102,10 +106,12 @@ export async function reply(chatSessionId: number): Promise<void> {
       chat.send(history[history.length - 1])
     }).finally(() => chat.setAgent(null))
 
-    await saveReply(session, provider, answer, steps)
+    const text = answer.contents.map((part) => part.content).join('\n\n')
+    await saveReply(session, provider, text, progress.steps)
   } catch (error) {
-    if (controller.signal.aborted) return
-    throw error
+    if (!controller.signal.aborted) throw error
+    // Stopped: keep what the agent had written so far, if anything.
+    if (progress.draft.trim()) await saveReply(session, provider, progress.draft, progress.steps, { stopped: true })
   } finally {
     endReply(chatSessionId)
   }
@@ -126,8 +132,17 @@ function toMessage(record: MessageRecord, diagrams: DiagramRecord[]): Message {
   return new Message({ sender: record.sender, contents, on: record.on, isSent: record.isSent })
 }
 
-async function saveReply(session: ChatSessionRecord, provider: ProviderRecord, answer: Message, steps: AgentStep[]) {
-  const text = answer.contents.map((part) => part.content).join('\n\n')
+/**
+ * Stores the agent's reply. Diagrams become project Diagrams, except in a
+ * stopped reply: those never passed the Mermaid check, so they stay as code.
+ */
+async function saveReply(
+  session: ChatSessionRecord,
+  provider: ProviderRecord,
+  text: string,
+  steps: AgentStep[],
+  { stopped = false } = {},
+) {
   const segments = parseReply(text)
   if (segments.length === 0) throw new Error('The model returned an empty reply.')
 
@@ -139,6 +154,8 @@ async function saveReply(session: ChatSessionRecord, provider: ProviderRecord, a
       if (segment.kind === 'text') parts.push({ type: 'text', content: segment.content })
       else if (segment.kind === 'code') {
         parts.push({ type: 'code', content: segment.content, language: segment.language || undefined })
+      } else if (stopped) {
+        parts.push({ type: 'code', content: segment.source, language: 'mermaid' })
       } else {
         const { name, type, source } = segment
         const existing = await db.diagrams
@@ -158,6 +175,7 @@ async function saveReply(session: ChatSessionRecord, provider: ProviderRecord, a
       isSent: true,
       parts,
       ...(steps.length > 0 && { steps }),
+      ...(stopped && { stopped }),
     })
     // Keep using this provider for the chat even if another one is added first later.
     if (session.providerId !== provider.id) await db.chatSessions.update(session.id, { providerId: provider.id })

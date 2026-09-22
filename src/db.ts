@@ -37,6 +37,8 @@ export interface MessageRecord {
   parts: MessagePartRecord[]
   /** What the agent did before answering (tool calls, checks, ...), for agent messages. */
   steps?: AgentStep[]
+  /** The user stopped this agent reply; it holds what was written until then. */
+  stopped?: boolean
 }
 
 export interface DiagramRecord {
@@ -46,6 +48,12 @@ export interface DiagramRecord {
   name: string
   /** ASCII source produced by the LLM (see Diagram in src/lib). */
   source: string
+}
+
+/** An app setting, stored by key (e.g. `'agent'`, see src/agent/settings.ts). */
+export interface SettingRecord {
+  key: string
+  value: unknown
 }
 
 /** A configured LLM provider; `args` match its `exposeParameters()`. */
@@ -62,6 +70,7 @@ export const db = new Dexie('graphite-ai') as Dexie & {
   messages: EntityTable<MessageRecord, 'id'>
   diagrams: EntityTable<DiagramRecord, 'id'>
   providers: EntityTable<ProviderRecord, 'id'>
+  settings: EntityTable<SettingRecord, 'key'>
 }
 
 // Only primary keys and queried fields are listed; bump the version and add a
@@ -74,4 +83,7 @@ db.version(1).stores({
 })
 db.version(2).stores({
   providers: '++id',
+})
+db.version(3).stores({
+  settings: 'key',
 })

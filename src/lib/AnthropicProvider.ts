@@ -66,6 +66,8 @@ class AnthropicModel extends LlmModel {
       {
         model: this.name,
         max_tokens: 64000,
+        // Each agent step resends the whole history (with any attachments); caching makes that a cache read.
+        cache_control: { type: 'ephemeral' },
         ...(systemPrompt && { system: systemPrompt }),
         messages: toMessages(turns),
         ...(tools.length > 0 && {

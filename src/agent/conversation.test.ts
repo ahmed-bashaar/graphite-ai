@@ -3,6 +3,7 @@ import { validateMermaid } from '../components/renderMermaid.ts'
 import { db } from '../db.ts'
 import { NoProviderError, reply, sendMessage } from './conversation.ts'
 import { replyProgress, stopReply } from './replies.ts'
+import { saveAgentSettings } from './settings.ts'
 import { AGENT_NAME, SYSTEM_PROMPT } from './systemPrompt.ts'
 
 type FetchLike = (url: string, init?: RequestInit) => Promise<Response>
@@ -218,6 +219,17 @@ describe('conversation', () => {
     expect(userMessage.parts.map((p) => p.type)).toEqual(['attachment'])
   })
 
+  it('uses the step limit from the agent settings', async () => {
+    const { chatSessionId } = await seed()
+    await saveAgentSettings({ maxSteps: 1 })
+    const fetch = ollamaReplies('Answer right away.')
+
+    await sendMessage(chatSessionId, 'hello')
+
+    // With one step, the first request already asks for a final answer.
+    expect(requestBody(fetch).messages.at(-1)?.content).toMatch(/step limit/i)
+  })
+
   it('does nothing when the last message is already answered', async () => {
     const { chatSessionId } = await seed()
     const fetch = ollamaReplies('first')
@@ -312,7 +324,39 @@ describe('conversation', () => {
     expect(agentMessage).not.toHaveProperty('steps')
   })
 
-  it('stops a reply on request, saving nothing', async () => {
+  it('keeps the partial answer when stopped, marked as stopped, without saving its unchecked diagrams', async () => {
+    const { chatSessionId } = await seed()
+    let push: (line: object) => void = () => {}
+    const fetch = vi.fn<FetchLike>(async (_url, init) => {
+      const encoder = new TextEncoder()
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          push = (line) => controller.enqueue(encoder.encode(JSON.stringify(line) + '\n'))
+          init?.signal?.addEventListener('abort', () => controller.error(new DOMException('Aborted', 'AbortError')))
+        },
+      })
+      return new Response(body)
+    })
+    vi.stubGlobal('fetch', fetch)
+
+    const sending = sendMessage(chatSessionId, 'hello')
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalled())
+    push({ message: { content: `Here is a start.\n\n${mermaid('Draft', 'classDiagram\n  class Book')}\n\nAnd` } })
+    await vi.waitFor(() => expect(replyProgress(chatSessionId)?.draft).toContain('And'))
+    stopReply(chatSessionId)
+    await sending
+
+    const [, stopped] = await messages(chatSessionId)
+    expect(stopped).toMatchObject({ sender: AGENT_NAME, stopped: true })
+    expect(stopped.parts).toEqual([
+      { type: 'text', content: 'Here is a start.' },
+      { type: 'code', content: '---\ntitle: Draft\n---\nclassDiagram\n  class Book', language: 'mermaid' },
+      { type: 'text', content: 'And' },
+    ])
+    expect(await db.diagrams.count()).toBe(0)
+  })
+
+  it('stops a reply with nothing written yet, saving nothing', async () => {
     const { chatSessionId } = await seed()
     const fetch = vi.fn<FetchLike>(
       (_url, init) =>
