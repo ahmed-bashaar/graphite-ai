@@ -2,15 +2,17 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { motion } from 'motion/react'
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import { NoProviderError, reply, sendMessage } from '../agent/conversation.ts'
+import { NoProviderError, reply, sendMessage, type ContextPart } from '../agent/conversation.ts'
 import { stopReply } from '../agent/replies.ts'
 import { AgentWork } from '../components/AgentWork.tsx'
+import { AddContext, ContextChips, SentAttachment, SentDiagramReference } from '../components/ChatContext.tsx'
 import { Avatar } from '../components/Avatar.tsx'
 import { ConfirmDelete } from '../components/ConfirmDelete.tsx'
 import { EditableTitle } from '../components/EditableTitle.tsx'
 import { MermaidSvg } from '../components/MermaidSvg.tsx'
 import { RenderedHtml } from '../components/RenderedHtml.tsx'
 import { markdownStyles } from '../components/markdownStyles.ts'
+import { readAttachment } from '../components/readAttachment.ts'
 import { useMermaid } from '../components/useMermaid.ts'
 import { useReplyProgress } from '../components/useReplyProgress.ts'
 import { db, type MessagePartRecord, type MessageRecord } from '../db.ts'
@@ -39,9 +41,15 @@ function Chat({ chatSessionId }: { chatSessionId: number }) {
   )
   const providers = useLiveQuery(() => db.providers.toArray())
   const provider = providers?.find((p) => p.id === session?.providerId) ?? providers?.[0]
+  const diagrams = useLiveQuery(
+    async () => (session ? db.diagrams.where({ projectId: session.projectId }).sortBy('name') : []),
+    [session?.projectId],
+  )
 
   const navigate = useNavigate()
   const [text, setText] = useState('')
+  const [context, setContext] = useState<ContextPart[]>([])
+  const [attachErrors, setAttachErrors] = useState<string[]>([])
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<unknown>(null)
   // A reply outlives this component, so it's tracked outside React; `pending` covers the moment before it starts.
@@ -88,9 +96,28 @@ function Chat({ chatSessionId }: { chatSessionId: number }) {
   function send(event?: FormEvent) {
     event?.preventDefault()
     const content = text.trim()
-    if (!content || working || !provider) return
+    if ((!content && context.length === 0) || working || !provider) return
+    const sending = context
     setText('')
-    void run(() => sendMessage(chatSessionId, content))
+    setContext([])
+    setAttachErrors([])
+    void run(() => sendMessage(chatSessionId, content, sending))
+  }
+
+  async function attach(files: File[]) {
+    if (files.length === 0) return
+    const results = await Promise.allSettled(files.map(readAttachment))
+    const read = results.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []))
+    setContext((parts) => [...parts, ...read])
+    setAttachErrors(results.flatMap((r) => (r.status === 'rejected' ? [(r.reason as Error).message] : [])))
+  }
+
+  function referenceDiagram(diagramId: number) {
+    setContext((parts) =>
+      parts.some((p) => p.type === 'diagram-reference' && p.diagramId === diagramId)
+        ? parts
+        : [...parts, { type: 'diagram-reference', diagramId }],
+    )
   }
 
   // Enter sends; Shift+Enter inserts a newline.
@@ -173,7 +200,15 @@ function Chat({ chatSessionId }: { chatSessionId: number }) {
         </div>
       </div>
 
-      <form onSubmit={send} className="mx-auto w-full max-w-3xl px-6 pb-6">
+      <form
+        onSubmit={send}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault()
+          void attach([...event.dataTransfer.files])
+        }}
+        className="mx-auto w-full max-w-3xl px-6 pb-6"
+      >
         <div className="mb-2 flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
           {providers?.length === 0 ? (
             <span>
@@ -199,13 +234,33 @@ function Chat({ chatSessionId }: { chatSessionId: number }) {
           )}
         </div>
 
+        <ContextChips
+          parts={context}
+          diagrams={diagrams ?? []}
+          onRemove={(index) => setContext((parts) => parts.filter((_, i) => i !== index))}
+        />
+        {attachErrors.length > 0 && (
+          <div role="alert" className="mb-2 text-sm text-red-700 dark:text-red-300">
+            {attachErrors.map((message) => (
+              <p key={message}>{message}</p>
+            ))}
+          </div>
+        )}
+
         <div className="flex items-end gap-2">
+          <AddContext diagrams={diagrams ?? []} onFiles={(files) => void attach(files)} onDiagram={referenceDiagram} />
           <textarea
             aria-label="Message"
             rows={1}
             value={text}
             onChange={(event) => setText(event.target.value)}
             onKeyDown={sendOnEnter}
+            onPaste={(event) => {
+              const files = [...event.clipboardData.files]
+              if (files.length === 0) return
+              event.preventDefault()
+              void attach(files)
+            }}
             placeholder="Message GraphiteAI…"
             className="field-sizing-content max-h-48 min-h-11 flex-1 resize-none rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-500 focus:ring-2 focus:ring-zinc-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
           />
@@ -224,7 +279,7 @@ function Chat({ chatSessionId }: { chatSessionId: number }) {
             <button
               type="submit"
               aria-label="Send"
-              disabled={!text.trim() || !provider}
+              disabled={(!text.trim() && context.length === 0) || !provider}
               className="grid size-11 shrink-0 place-items-center rounded-xl bg-zinc-900 text-white hover:bg-zinc-700 disabled:opacity-30 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
             >
               <svg
@@ -272,7 +327,7 @@ function ChatMessage({ message, projectId }: { message: MessageRecord; projectId
       <div className={`flex max-w-[80%] min-w-0 flex-col gap-2 rounded-2xl px-4 py-2.5 leading-relaxed ${bubble[who]}`}>
         {message.steps && <AgentWork steps={message.steps} />}
         {message.parts.map((part, i) => (
-          <Part key={i} part={part} projectId={projectId} />
+          <Part key={i} part={part} projectId={projectId} who={who} />
         ))}
       </div>
     </motion.article>
@@ -311,9 +366,24 @@ function LiveReply({ progress }: { progress: AgentProgress }) {
   )
 }
 
-function Part({ part, projectId }: { part: MessagePartRecord; projectId?: number }) {
-  if (part.type === 'diagram-reference') return <DiagramCard diagramId={part.diagramId} projectId={projectId} />
+function Part({ part, projectId, who }: { part: MessagePartRecord; projectId?: number; who: 'user' | 'agent' }) {
+  if (part.type === 'attachment') return <SentAttachment part={part} />
+  if (part.type === 'diagram-reference') {
+    return who === 'user' ? (
+      <UserDiagramReference diagramId={part.diagramId} projectId={projectId} />
+    ) : (
+      <DiagramCard diagramId={part.diagramId} projectId={projectId} />
+    )
+  }
   return <RenderedHtml of={new MessagePart(part.type, part.content)} className={markdownStyles} />
+}
+
+/** A diagram the user referenced: a compact link rather than a preview. */
+function UserDiagramReference({ diagramId, projectId }: { diagramId: number; projectId?: number }) {
+  const diagram = useLiveQuery(async () => (await db.diagrams.get(diagramId)) ?? null, [diagramId])
+  if (diagram === undefined) return null
+  if (diagram === null) return <p className="text-sm italic opacity-70">Diagram deleted</p>
+  return <SentDiagramReference name={diagram.name} href={`/projects/${projectId}/diagrams/${diagramId}`} />
 }
 
 function DiagramCard({ diagramId, projectId }: { diagramId: number; projectId?: number }) {
