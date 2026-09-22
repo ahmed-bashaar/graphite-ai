@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from './db.ts'
-import { deleteChat, deleteDiagram, deleteProject } from './mutations.ts'
+import {
+  createDiagram,
+  deleteChat,
+  deleteDiagram,
+  deleteProject,
+  restoreDiagramVersion,
+  updateDiagramSource,
+} from './mutations.ts'
 
 async function seedTwoProjects() {
   const ids = []
@@ -54,5 +61,76 @@ describe('mutations', () => {
 
     expect(await db.diagrams.get(a.diagramId)).toBeUndefined()
     expect(await db.messages.where({ chatSessionId: a.chatSessionId }).count()).toBe(1)
+  })
+
+  describe('diagram versions', () => {
+    const versions = (diagramId: number) => db.diagramVersions.where({ diagramId }).sortBy('id')
+
+    async function newDiagram() {
+      const projectId = await db.projects.add({ name: 'P', createdAt: new Date() })
+      const diagramId = await createDiagram(
+        { projectId, type: 'class', name: 'Domain', source: '---\ntitle: Domain\n---\nclassDiagram\n  class Book' },
+        'agent',
+      )
+      return { projectId, diagramId }
+    }
+
+    it('records the first version when a diagram is created', async () => {
+      const { diagramId } = await newDiagram()
+      expect(await versions(diagramId)).toEqual([
+        expect.objectContaining({ diagramId, author: 'agent', source: expect.stringContaining('class Book') }),
+      ])
+    })
+
+    it('records a version for each change of source, and none when it is unchanged', async () => {
+      const { diagramId } = await newDiagram()
+      const v2 = '---\ntitle: Domain\n---\nclassDiagram\n  class Book\n  class Loan'
+
+      await updateDiagramSource(diagramId, v2, 'user')
+      await updateDiagramSource(diagramId, v2, 'user')
+
+      expect((await versions(diagramId)).map((v) => [v.author, v.source])).toEqual([
+        ['agent', expect.stringContaining('class Book')],
+        ['user', v2],
+      ])
+      expect((await db.diagrams.get(diagramId))?.source).toBe(v2)
+    })
+
+    it('keeps the source of a diagram from before version history as its first version', async () => {
+      const projectId = await db.projects.add({ name: 'P', createdAt: new Date() })
+      const diagramId = await db.diagrams.add({ projectId, type: 'class', name: 'Old', source: 'classDiagram\n  class Old' })
+
+      await updateDiagramSource(diagramId, 'classDiagram\n  class New', 'agent')
+
+      expect((await versions(diagramId)).map((v) => [v.author, v.source])).toEqual([
+        ['earlier', 'classDiagram\n  class Old'],
+        ['agent', 'classDiagram\n  class New'],
+      ])
+    })
+
+    it('restores an old version as a new one, under the diagram’s current name and type', async () => {
+      const { diagramId } = await newDiagram()
+      await updateDiagramSource(diagramId, '---\ntitle: Domain\n---\nsequenceDiagram\n  A->>B: hi', 'agent')
+      await db.diagrams.update(diagramId, { name: 'Renamed' })
+      const [first] = await versions(diagramId)
+
+      await restoreDiagramVersion(first.id)
+
+      const diagram = await db.diagrams.get(diagramId)
+      expect(diagram).toMatchObject({ type: 'class', source: '---\ntitle: Renamed\n---\nclassDiagram\n  class Book' })
+      const all = await versions(diagramId)
+      expect(all).toHaveLength(3)
+      expect(all[2]).toMatchObject({ author: 'user', restoredFrom: first.id, source: diagram?.source })
+    })
+
+    it('deletes a diagram’s versions with it, and with its project', async () => {
+      const a = await newDiagram()
+      const b = await newDiagram()
+
+      await deleteDiagram(a.diagramId)
+      await deleteProject(b.projectId)
+
+      expect(await db.diagramVersions.count()).toBe(0)
+    })
   })
 })

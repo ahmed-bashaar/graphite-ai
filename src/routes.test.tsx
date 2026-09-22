@@ -3,6 +3,7 @@ import { userEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderMermaid } from './components/renderMermaid.ts'
 import { db } from './db.ts'
+import { createDiagram, updateDiagramSource } from './mutations.ts'
 import { expectPath, renderAt } from './test/router.tsx'
 
 async function seedProject(name = 'Library system') {
@@ -482,6 +483,67 @@ describe('routes', () => {
       const diagramId = await db.diagrams.add({ projectId, type: 'class', name: 'Domain', source: diagramSource })
       return { projectId, diagramId }
     }
+
+    describe('version history', () => {
+      const v1 = 'classDiagram\n  class Book'
+      const v2 = 'classDiagram\n  class Book\n  class Loan'
+
+      async function seedHistory() {
+        const projectId = await seedProject()
+        const diagramId = await createDiagram({ projectId, type: 'class', name: 'Domain', source: v1 }, 'agent')
+        await updateDiagramSource(diagramId, v2, 'user')
+        return { projectId, diagramId }
+      }
+
+      it('lists the versions, newest first, with who saved them', async () => {
+        const { projectId, diagramId } = await seedHistory()
+        renderAt(`/projects/${projectId}/diagrams/${diagramId}`)
+
+        await userEvent.click(await screen.findByRole('button', { name: /history/i }))
+        const history = await screen.findByRole('region', { name: /version history/i })
+        const items = await within(history).findAllByRole('listitem')
+        expect(items).toHaveLength(2)
+        expect(items[0]).toHaveTextContent(/you/i)
+        expect(items[0]).toHaveTextContent(/current/i)
+        expect(items[1]).toHaveTextContent(/graphiteai/i)
+      })
+
+      it('previews and compares an earlier version, then restores it', async () => {
+        const { projectId, diagramId } = await seedHistory()
+        renderAt(`/projects/${projectId}/diagrams/${diagramId}`)
+
+        await userEvent.click(await screen.findByRole('button', { name: /history/i }))
+        const history = await screen.findByRole('region', { name: /version history/i })
+        await userEvent.click(await within(history).findByRole('button', { name: /graphiteai/i }))
+
+        expect(await screen.findByText(/viewing an earlier version/i)).toBeInTheDocument()
+        const preview = await screen.findByTestId('mermaid-svg')
+        await vi.waitFor(() => expect(screen.getByTestId('mermaid-svg')).not.toHaveTextContent('class Loan'))
+        expect(preview).toBeInTheDocument()
+
+        await userEvent.click(screen.getByRole('button', { name: /compare with current/i }))
+        const changes = screen.getByRole('region', { name: /changes/i })
+        expect(within(changes).getByText('class Loan', { selector: 'ins' })).toBeInTheDocument()
+
+        await userEvent.click(screen.getByRole('button', { name: /restore this version/i }))
+        await vi.waitFor(async () => expect((await db.diagrams.get(diagramId))?.source).toBe('---\ntitle: Domain\n---\n' + v1))
+        await vi.waitFor(() => expect(screen.queryByText(/viewing an earlier version/i)).toBeNull())
+        await vi.waitFor(() => expect(within(history).getAllByRole('listitem')).toHaveLength(3))
+        expect(within(history).getAllByRole('listitem')[0]).toHaveTextContent(/restored/i)
+      })
+
+      it('records source edits as versions', async () => {
+        const { projectId, diagramId } = await seedHistory()
+        renderAt(`/projects/${projectId}/diagrams/${diagramId}`)
+
+        await userEvent.click(await screen.findByRole('button', { name: /edit source/i }))
+        const editor = screen.getByRole('textbox', { name: /mermaid source/i })
+        await userEvent.type(editor, '{Enter}  class Member')
+        await userEvent.click(screen.getByRole('button', { name: /save/i }))
+
+        await vi.waitFor(async () => expect(await db.diagramVersions.where({ diagramId }).count()).toBe(3))
+      })
+    })
 
     it('draws the diagram as SVG under its name', async () => {
       const { projectId, diagramId } = await seedDiagram()

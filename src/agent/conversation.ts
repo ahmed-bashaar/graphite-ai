@@ -18,6 +18,7 @@ import {
   type AgentProgress,
   type AgentStep,
 } from '../lib/index.ts'
+import { createDiagram, updateDiagramSource } from '../mutations.ts'
 import { providerKinds } from '../providers.ts'
 import { NEW_CHAT_TITLE, titleFrom } from './chatTitle.ts'
 import { endReply, startReply, updateReply } from './replies.ts'
@@ -63,8 +64,9 @@ async function contextName(part: ContextPart): Promise<string> {
  * Has the agent answer the chat's last message, if it's an unanswered user
  * message, and stores the reply. The agent works through tool calls and has
  * its diagrams checked before answering; progress streams to `replies.ts`.
- * Mermaid blocks in the reply become project Diagrams; a diagram titled like
- * an existing one replaces its source. A stopped reply saves nothing.
+ * Mermaid blocks in the reply become project Diagrams (each change recorded as
+ * a version); a diagram titled like an existing one replaces its source. A
+ * stopped reply keeps what was written so far.
  */
 export async function reply(chatSessionId: number): Promise<void> {
   const session = await db.chatSessions.get(chatSessionId)
@@ -146,7 +148,7 @@ async function saveReply(
   const segments = parseReply(text)
   if (segments.length === 0) throw new Error('The model returned an empty reply.')
 
-  await db.transaction('rw', db.messages, db.diagrams, db.chatSessions, async () => {
+  await db.transaction('rw', [db.messages, db.diagrams, db.diagramVersions, db.chatSessions], async () => {
     // The chat may have been deleted while the model was answering.
     if (!(await db.chatSessions.get(session.id))) return
     const parts: MessagePartRecord[] = []
@@ -163,8 +165,8 @@ async function saveReply(
           .filter((d) => sameName(d.name, name))
           .first()
         const diagramId = existing
-          ? (await db.diagrams.update(existing.id, { type, source }), existing.id)
-          : await db.diagrams.add({ projectId: session.projectId, type, name, source })
+          ? (await updateDiagramSource(existing.id, source, 'agent'), existing.id)
+          : await createDiagram({ projectId: session.projectId, type, name, source }, 'agent')
         parts.push({ type: 'diagram-reference', diagramId })
       }
     }
