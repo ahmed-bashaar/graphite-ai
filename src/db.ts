@@ -1,5 +1,5 @@
 import { Dexie, type EntityTable } from 'dexie'
-import type { Args } from './lib/index.ts'
+import type { AgentStep, Args } from './lib/index.ts'
 import type { ProviderKind } from './providers.ts'
 
 // Persisted shapes for the domain model in docs/uml/. MessageParts are
@@ -33,6 +33,8 @@ export interface MessageRecord {
   on: Date
   isSent: boolean
   parts: MessagePartRecord[]
+  /** What the agent did before answering (tool calls, checks, ...), for agent messages. */
+  steps?: AgentStep[]
 }
 
 export interface DiagramRecord {

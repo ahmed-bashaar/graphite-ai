@@ -1,5 +1,11 @@
 import type { Args, Parameter, Parametered } from './Parametered.ts'
 
+export type JsonSchema = {
+  type: 'object'
+  properties: Record<string, { type: string; description?: string }>
+  required: string[]
+}
+
 export type AgenticToolInit = {
   name: string
   description: string
@@ -30,5 +36,14 @@ export class AgenticTool implements Parametered {
 
   exposeParameters(): Parameter[] {
     return this.parameters
+  }
+
+  /** The parameters as a JSON Schema object, the shape tool-calling APIs expect. */
+  inputSchema(): JsonSchema {
+    const properties: Record<string, { type: string; description?: string }> = {}
+    for (const { name, type, description } of this.parameters) {
+      properties[name] = description ? { type, description } : { type }
+    }
+    return { type: 'object', properties, required: this.parameters.filter((p) => p.required).map((p) => p.name) }
   }
 }

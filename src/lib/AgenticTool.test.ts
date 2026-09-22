@@ -37,4 +37,21 @@ describe('AgenticTool', () => {
     const tool = makeTool(vi.fn(async () => 42))
     await expect(tool.call({ name: 'x' })).resolves.toBe(42)
   })
+
+  it('describes its parameters as a JSON Schema for tool-calling APIs', () => {
+    const tool = new AgenticTool({
+      name: 'greet',
+      description: 'Greets someone',
+      parameters: [
+        { name: 'name', type: 'string', required: true, description: 'Who to greet' },
+        { name: 'loud', type: 'boolean' },
+      ],
+      handler: vi.fn(),
+    })
+    expect(tool.inputSchema()).toEqual({
+      type: 'object',
+      properties: { name: { type: 'string', description: 'Who to greet' }, loud: { type: 'boolean' } },
+      required: ['name'],
+    })
+  })
 })

@@ -11,10 +11,12 @@ afterEach(() => {
 })
 
 // Mermaid needs real layout (SVG text measurement), which jsdom lacks. Tests get
-// a stand-in SVG that echoes the source; override per test with vi.mocked().
+// a stand-in SVG that echoes the source, and every diagram is valid; override
+// per test with vi.mocked().
 vi.mock('../components/renderMermaid.ts', () => ({
   renderMermaid: vi.fn(
     async (source: string) =>
       `<svg data-testid="mermaid-svg"><text>${source.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</text></svg>`,
   ),
+  validateMermaid: vi.fn(async () => null),
 }))

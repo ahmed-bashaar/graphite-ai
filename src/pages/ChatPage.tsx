@@ -3,6 +3,8 @@ import { motion } from 'motion/react'
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { NoProviderError, reply, sendMessage } from '../agent/conversation.ts'
+import { stopReply } from '../agent/replies.ts'
+import { AgentWork } from '../components/AgentWork.tsx'
 import { Avatar } from '../components/Avatar.tsx'
 import { ConfirmDelete } from '../components/ConfirmDelete.tsx'
 import { EditableTitle } from '../components/EditableTitle.tsx'
@@ -10,8 +12,9 @@ import { MermaidSvg } from '../components/MermaidSvg.tsx'
 import { RenderedHtml } from '../components/RenderedHtml.tsx'
 import { markdownStyles } from '../components/markdownStyles.ts'
 import { useMermaid } from '../components/useMermaid.ts'
+import { useReplyProgress } from '../components/useReplyProgress.ts'
 import { db, type MessagePartRecord, type MessageRecord } from '../db.ts'
-import { diagramTypeLabel, MessagePart } from '../lib/index.ts'
+import { diagramTypeLabel, MessagePart, parseReply, type AgentProgress } from '../lib/index.ts'
 import { deleteChat } from '../mutations.ts'
 import { NotFound } from './NotFound.tsx'
 
@@ -41,13 +44,16 @@ function Chat({ chatSessionId }: { chatSessionId: number }) {
   const [text, setText] = useState('')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<unknown>(null)
+  // A reply outlives this component, so it's tracked outside React; `pending` covers the moment before it starts.
+  const progress = useReplyProgress(chatSessionId)
+  const working = pending || progress !== undefined
   const scroller = useRef<HTMLDivElement>(null)
   const content = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const el = scroller.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [messages?.length, pending])
+  }, [messages?.length, working])
 
   // Diagram previews render asynchronously; stay pinned to the bottom while they grow,
   // unless the user has scrolled up.
@@ -82,7 +88,7 @@ function Chat({ chatSessionId }: { chatSessionId: number }) {
   function send(event?: FormEvent) {
     event?.preventDefault()
     const content = text.trim()
-    if (!content || pending || !provider) return
+    if (!content || working || !provider) return
     setText('')
     void run(() => sendMessage(chatSessionId, content))
   }
@@ -134,13 +140,14 @@ function Chat({ chatSessionId }: { chatSessionId: number }) {
             <ChatMessage key={message.id} message={message} projectId={session?.projectId} />
           ))}
 
-          {pending && (
+          {progress && (progress.steps.length > 0 || progress.draft) && <LiveReply progress={progress} />}
+          {working && (
             <div role="status" className="flex items-center gap-3 text-sm text-zinc-500 dark:text-zinc-400">
               <Avatar who="agent" />
-              <span className="animate-pulse">GraphiteAI is thinking…</span>
+              <span className="animate-pulse">GraphiteAI is {activity(progress)}…</span>
             </div>
           )}
-          {!pending && (error != null || unanswered) && (
+          {!working && (error != null || unanswered) && (
             <div
               role={error != null ? 'alert' : undefined}
               className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200"
@@ -202,27 +209,53 @@ function Chat({ chatSessionId }: { chatSessionId: number }) {
             placeholder="Message GraphiteAI…"
             className="field-sizing-content max-h-48 min-h-11 flex-1 resize-none rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-500 focus:ring-2 focus:ring-zinc-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
           />
-          <button
-            type="submit"
-            aria-label="Send"
-            disabled={!text.trim() || pending || !provider}
-            className="grid size-11 shrink-0 place-items-center rounded-xl bg-zinc-900 text-white hover:bg-zinc-700 disabled:opacity-30 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-          >
-            <svg
-              viewBox="0 0 20 20"
-              className="size-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              aria-hidden="true"
+          {working ? (
+            <button
+              type="button"
+              aria-label="Stop"
+              onClick={() => stopReply(chatSessionId)}
+              className="grid size-11 shrink-0 place-items-center rounded-xl bg-zinc-900 text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
             >
-              <path d="M4 10h12M11 5l5 5-5 5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
+              <svg viewBox="0 0 20 20" className="size-4" fill="currentColor" aria-hidden="true">
+                <rect x="4" y="4" width="12" height="12" rx="2" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              type="submit"
+              aria-label="Send"
+              disabled={!text.trim() || !provider}
+              className="grid size-11 shrink-0 place-items-center rounded-xl bg-zinc-900 text-white hover:bg-zinc-700 disabled:opacity-30 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+            >
+              <svg
+                viewBox="0 0 20 20"
+                className="size-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <path d="M4 10h12M11 5l5 5-5 5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          )}
         </div>
       </form>
     </div>
   )
+}
+
+/** What the status line says the agent is doing. */
+function activity(progress: AgentProgress | undefined): string {
+  if (progress?.draft) return 'writing'
+  const last = progress?.steps.at(-1)
+  if (!last || last.kind === 'thinking') return 'thinking'
+  return 'working'
+}
+
+const bubble = {
+  user: 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900',
+  agent: 'border border-zinc-200 bg-zinc-50 text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100',
 }
 
 function ChatMessage({ message, projectId }: { message: MessageRecord; projectId?: number }) {
@@ -236,18 +269,45 @@ function ChatMessage({ message, projectId }: { message: MessageRecord; projectId
       className={`flex items-start gap-3 ${who === 'user' ? 'flex-row-reverse' : ''}`}
     >
       <Avatar who={who} />
-      <div
-        className={`flex max-w-[80%] min-w-0 flex-col gap-2 rounded-2xl px-4 py-2.5 leading-relaxed ${
-          who === 'user'
-            ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
-            : 'border border-zinc-200 bg-zinc-50 text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100'
-        }`}
-      >
+      <div className={`flex max-w-[80%] min-w-0 flex-col gap-2 rounded-2xl px-4 py-2.5 leading-relaxed ${bubble[who]}`}>
+        {message.steps && <AgentWork steps={message.steps} />}
         {message.parts.map((part, i) => (
           <Part key={i} part={part} projectId={projectId} />
         ))}
       </div>
     </motion.article>
+  )
+}
+
+/** The reply being written: the agent's work so far and the answer streaming in. */
+function LiveReply({ progress }: { progress: AgentProgress }) {
+  return (
+    <article data-sender="agent" aria-busy="true" className="flex items-start gap-3">
+      <Avatar who="agent" />
+      <div className={`flex max-w-[80%] min-w-0 flex-col gap-2 rounded-2xl px-4 py-2.5 leading-relaxed ${bubble.agent}`}>
+        <AgentWork steps={progress.steps} live />
+        {parseReply(progress.draft).map((segment, i) =>
+          segment.kind === 'diagram' ? (
+            // Diagrams are drawn once the reply is done and they've passed the Mermaid check.
+            <div
+              key={i}
+              className="flex items-baseline justify-between gap-3 rounded-xl border border-dashed border-zinc-300 bg-white p-3 dark:border-zinc-700 dark:bg-zinc-950"
+            >
+              <span className="truncate font-medium">{segment.name}</span>
+              <span className="shrink-0 animate-pulse text-xs text-zinc-500">
+                {diagramTypeLabel(segment.type)} · Drawing…
+              </span>
+            </div>
+          ) : (
+            <RenderedHtml
+              key={i}
+              of={new MessagePart(segment.kind, segment.content)}
+              className={segment.kind === 'text' ? markdownStyles : undefined}
+            />
+          ),
+        )}
+      </div>
+    </article>
   )
 }
 

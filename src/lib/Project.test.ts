@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { AiAgent } from './AiAgent.ts'
-import { LlmModel } from './LlmModel.ts'
-import type { MessagePart } from './MessagePart.ts'
+import { LlmModel, type ModelStep } from './LlmModel.ts'
 import { Project } from './Project.ts'
 
 class SilentModel extends LlmModel {
-  async complete(): Promise<MessagePart[]> {
-    return []
+  async step(): Promise<ModelStep> {
+    return { text: '', toolCalls: [] }
   }
 }
 
