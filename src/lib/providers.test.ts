@@ -78,6 +78,12 @@ function recorder() {
   }
 }
 
+const png = { name: 'sketch.png', mediaType: 'image/png', data: 'iVBORw0KGgo=' }
+const pdf = { name: 'spec.pdf', mediaType: 'application/pdf', data: 'JVBERi0=' }
+
+/** A user turn with an image and a PDF attached. */
+const attachmentTurns: ChatTurn[] = [{ role: 'user', content: 'Model this', attachments: [png, pdf] }]
+
 const streamResponse = (body: string, contentType: string) =>
   new Response(body, { status: 200, headers: { 'content-type': contentType } })
 
@@ -313,6 +319,27 @@ describe('AnthropicProvider', () => {
     await expect(opus(fetch).step(turns, [])).rejects.toThrow(/declined/i)
   })
 
+  it('sends attached images and PDFs as image and document blocks before the text', async () => {
+    const { fetch, calls } = fakeFetch(anthropicStream([{ type: 'text', text: 'ok' }]))
+    await opus(fetch).step(
+      [...attachmentTurns, { role: 'assistant', content: 'Done' }, { role: 'user', content: '', attachments: [png] }],
+      [],
+    )
+
+    expect((calls[0].body as { messages: unknown }).messages).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: png.data } },
+          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdf.data }, title: 'spec.pdf' },
+          { type: 'text', text: 'Model this' },
+        ],
+      },
+      { role: 'assistant', content: 'Done' },
+      { role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: png.data } }] },
+    ])
+  })
+
   it('refuses to run tool calls cut off by the token limit', async () => {
     const { fetch } = fakeFetch(
       anthropicStream([{ type: 'tool_use', id: 't', name: 'check_diagram', input: { source: 'x' } }], 'max_tokens'),
@@ -411,6 +438,19 @@ describe('OllamaProvider', () => {
     const { fetch } = fakeFetch(new HttpError(404, { error: 'model "nope" not found' }))
     const model = new OllamaProvider({ fetch }).provideModel({ model: 'nope' })
     await expect(model.step(turns, [])).rejects.toThrow(/404.*not found/)
+  })
+
+  it('sends attached images in the message’s images, and says it cannot read PDFs', async () => {
+    const { fetch, calls } = fakeFetch(ndjson({ message: { content: 'ok' }, done: true }))
+    await llama(fetch).step(attachmentTurns, [])
+
+    expect((calls[0].body as { messages: unknown }).messages).toEqual([
+      {
+        role: 'user',
+        content: 'Model this\n\n(The user attached "spec.pdf", but this model can\'t read PDFs.)',
+        images: [png.data],
+      },
+    ])
   })
 
   it('surfaces errors reported inside the stream', async () => {
@@ -577,6 +617,21 @@ describe('OpenAiCompatibleProvider', () => {
         },
       ],
     })
+  })
+
+  it('sends attached images as image_url parts, and says it cannot read PDFs', async () => {
+    const { fetch, calls } = fakeFetch(sse({ choices: [{ delta: { content: 'ok' } }] }))
+    await gpt(fetch).step(attachmentTurns, [])
+
+    expect((calls[0].body as { messages: unknown }).messages).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Model this\n\n(The user attached "spec.pdf", but this model can\'t read PDFs.)' },
+          { type: 'image_url', image_url: { url: `data:image/png;base64,${png.data}` } },
+        ],
+      },
+    ])
   })
 
   it('passes unparseable tool arguments on as empty args', async () => {

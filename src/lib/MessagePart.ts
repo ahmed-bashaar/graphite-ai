@@ -1,7 +1,7 @@
 import { renderMarkdown } from './markdown.ts'
 import { escapeHtml, type Renderable } from './Renderable.ts'
 
-export type MessagePartType = 'text' | 'code' | 'diagram-reference'
+export type MessagePartType = 'text' | 'code' | 'diagram-reference' | 'attachment'
 
 export class MessagePart implements Renderable {
   type: MessagePartType

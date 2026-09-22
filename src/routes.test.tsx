@@ -168,7 +168,11 @@ describe('routes', () => {
       await userEvent.type(input, 'Model a library{Enter}')
       expect(input).toHaveValue('')
 
-      await vi.waitFor(() => expect(screen.getAllByRole('article')).toHaveLength(2))
+      // Wait for the saved reply, not the live one that streams in first.
+      await vi.waitFor(() => {
+        expect(screen.queryByRole('article', { busy: true })).toBeNull()
+        expect(screen.getAllByRole('article')).toHaveLength(2)
+      })
       const [mine, agent] = screen.getAllByRole('article')
       expect(mine).toHaveTextContent('Model a library')
       expect(agent).toHaveTextContent('Here you go:')
@@ -300,8 +304,99 @@ describe('routes', () => {
 
       stubOllamaReply('Recovered')
       await userEvent.click(screen.getByRole('button', { name: /retry/i }))
-      await vi.waitFor(() => expect(screen.getAllByRole('article')).toHaveLength(2))
+      await vi.waitFor(() => {
+        expect(screen.queryByRole('article', { busy: true })).toBeNull()
+        expect(screen.getAllByRole('article')).toHaveLength(2)
+      })
+      expect(screen.getAllByRole('article')[1]).toHaveTextContent('Recovered')
       expect(screen.queryByRole('alert')).toBeNull()
+    })
+
+    describe('adding context', () => {
+      const pngFile = () => new File([new Uint8Array([137, 80, 78, 71])], 'sketch.png', { type: 'image/png' })
+      const textFile = () => new File(['Members borrow books'], 'notes.txt', { type: 'text/plain' })
+
+      it('attaches images and files with the circle button and sends them with the message', async () => {
+        const { projectId, chatSessionId } = await seedChat()
+        await seedOllama()
+        stubOllamaReply('Thanks!')
+        renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+
+        await userEvent.click(await screen.findByRole('button', { name: /add context/i }))
+        expect(screen.getByRole('menuitem', { name: /upload images or files/i })).toBeInTheDocument()
+        await userEvent.upload(screen.getByLabelText(/attach files/i), [pngFile(), textFile()])
+
+        const pending = await screen.findByRole('list', { name: /attached context/i })
+        expect(within(pending).getByRole('img', { name: 'sketch.png' })).toBeInTheDocument()
+        expect(within(pending).getByText('notes.txt')).toBeInTheDocument()
+        await userEvent.click(screen.getByRole('button', { name: 'Remove notes.txt' }))
+        expect(within(pending).queryByText('notes.txt')).toBeNull()
+
+        await userEvent.type(screen.getByRole('textbox', { name: /message/i }), 'Model this{Enter}')
+
+        const [mine] = await screen.findAllByRole('article')
+        expect(within(mine).getByRole('img', { name: 'sketch.png' })).toHaveAttribute(
+          'src',
+          expect.stringMatching(/^data:image\/png;base64,/),
+        )
+        await vi.waitFor(() => expect(screen.queryByRole('list', { name: /attached context/i })).toBeNull())
+        const [message] = await db.messages.toArray()
+        expect(message.parts).toEqual([
+          { type: 'text', content: 'Model this' },
+          { type: 'attachment', name: 'sketch.png', mediaType: 'image/png', data: 'iVBORw==' },
+        ])
+      })
+
+      it('references a project diagram', async () => {
+        const { projectId, chatSessionId } = await seedChat()
+        const diagramId = await db.diagrams.add({ projectId, type: 'class', name: 'Domain model', source: 'classDiagram' })
+        await seedOllama()
+        stubOllamaReply('Sure.')
+        renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+
+        await userEvent.click(await screen.findByRole('button', { name: /add context/i }))
+        await userEvent.click(await screen.findByRole('menuitem', { name: /domain model/i }))
+        expect(screen.queryByRole('menu')).toBeNull()
+        const pending = screen.getByRole('list', { name: /attached context/i })
+        expect(within(pending).getByText('Domain model')).toBeInTheDocument()
+
+        // A message can be only context.
+        await userEvent.click(screen.getByRole('button', { name: /send/i }))
+
+        const [mine] = await screen.findAllByRole('article')
+        expect(await within(mine).findByRole('link', { name: /domain model/i })).toHaveAttribute(
+          'href',
+          `/projects/${projectId}/diagrams/${diagramId}`,
+        )
+        const [message] = await db.messages.toArray()
+        expect(message.parts).toEqual([{ type: 'diagram-reference', diagramId }])
+      })
+
+      it('attaches images pasted into the message field', async () => {
+        const { projectId, chatSessionId } = await seedChat()
+        renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+
+        await userEvent.click(await screen.findByRole('textbox', { name: /message/i }))
+        await userEvent.paste({ files: [pngFile()] } as unknown as DataTransfer)
+
+        const pending = await screen.findByRole('list', { name: /attached context/i })
+        expect(within(pending).getByRole('img', { name: 'sketch.png' })).toBeInTheDocument()
+      })
+
+      it('explains why a file cannot be attached', async () => {
+        const { projectId, chatSessionId } = await seedChat()
+        renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+        const user = userEvent.setup({ applyAccept: false })
+
+        const big = new File([new Uint8Array(6 * 1024 * 1024)], 'huge.png', { type: 'image/png' })
+        const zip = new File(['PK'], 'code.zip', { type: 'application/zip' })
+        await user.upload(await screen.findByLabelText(/attach files/i), [big, zip])
+
+        const alert = await screen.findByRole('alert')
+        expect(alert).toHaveTextContent(/huge\.png.*5 MB/i)
+        expect(alert).toHaveTextContent(/code\.zip/)
+        expect(screen.queryByRole('list', { name: /attached context/i })).toBeNull()
+      })
     })
 
     it('asks for a provider when none is configured', async () => {
@@ -379,7 +474,8 @@ describe('routes', () => {
       await vi.waitFor(async () =>
         expect((await db.diagrams.get(diagramId))?.source).toBe('classDiagram\n  class Loan'),
       )
-      expect(screen.queryByRole('textbox', { name: /mermaid source/i })).toBeNull()
+      // The editor closes once the write has resolved, a tick after the data changes.
+      await vi.waitFor(() => expect(screen.queryByRole('textbox', { name: /mermaid source/i })).toBeNull())
     })
 
     it('offers the SVG for download', async () => {

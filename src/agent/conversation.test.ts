@@ -178,6 +178,46 @@ describe('conversation', () => {
     expect(await db.diagrams.count()).toBe(0)
   })
 
+  it('sends attachments and referenced diagrams with the message, and shows them to the model', async () => {
+    const { projectId, chatSessionId } = await seed()
+    const diagramId = await db.diagrams.add({
+      projectId,
+      type: 'class',
+      name: 'Domain model',
+      source: 'classDiagram\n  class Book',
+    })
+    const fetch = ollamaReplies('Got it.')
+    const image = { type: 'attachment' as const, name: 'sketch.png', mediaType: 'image/png', data: 'iVBORw0KGgo=' }
+    const notes = { type: 'attachment' as const, name: 'notes.txt', mediaType: 'text/plain', data: btoa('Members borrow books') }
+
+    await sendMessage(chatSessionId, 'Add loans', [image, notes, { type: 'diagram-reference', diagramId }])
+
+    const [userMessage] = await messages(chatSessionId)
+    expect(userMessage.parts).toEqual([
+      { type: 'text', content: 'Add loans' },
+      image,
+      notes,
+      { type: 'diagram-reference', diagramId },
+    ])
+    const [, sent] = requestBody(fetch).messages as { role: string; content: string; images?: string[] }[]
+    expect(sent.images).toEqual(['iVBORw0KGgo='])
+    expect(sent.content).toContain('Attached file "notes.txt":\n```\nMembers borrow books\n```')
+    expect(sent.content).toContain('Referenced diagram "Domain model":\n```mermaid\nclassDiagram\n  class Book\n```')
+  })
+
+  it('names a new chat after the first attachment when the message has no text', async () => {
+    const { chatSessionId } = await seed()
+    ollamaReplies('Nice sketch.')
+
+    await sendMessage(chatSessionId, '  ', [
+      { type: 'attachment', name: 'whiteboard.jpg', mediaType: 'image/jpeg', data: 'AA==' },
+    ])
+
+    expect((await db.chatSessions.get(chatSessionId))?.title).toBe('whiteboard.jpg')
+    const [userMessage] = await messages(chatSessionId)
+    expect(userMessage.parts.map((p) => p.type)).toEqual(['attachment'])
+  })
+
   it('does nothing when the last message is already answered', async () => {
     const { chatSessionId } = await seed()
     const fetch = ollamaReplies('first')

@@ -8,6 +8,7 @@ import {
 } from '../db.ts'
 import {
   AiAgent,
+  Attachment,
   ChatSession,
   Diagram,
   DiagramReference,
@@ -30,22 +31,30 @@ export class NoProviderError extends Error {
   }
 }
 
-/** Stores the user's message (naming a new chat after it), then gets the agent's reply. */
-export async function sendMessage(chatSessionId: number, content: string): Promise<void> {
-  await db.transaction('rw', db.messages, db.chatSessions, async () => {
-    await db.messages.add({
-      chatSessionId,
-      sender: 'user',
-      on: new Date(),
-      isSent: true,
-      parts: [{ type: 'text', content }],
-    })
+/** Context sent along with a message: an attached file or a reference to a project diagram. */
+export type ContextPart = Extract<MessagePartRecord, { type: 'attachment' | 'diagram-reference' }>
+
+/**
+ * Stores the user's message with any attached `context` (naming a new chat
+ * after it), then gets the agent's reply.
+ */
+export async function sendMessage(chatSessionId: number, content: string, context: ContextPart[] = []): Promise<void> {
+  const text = content.trim()
+  const parts: MessagePartRecord[] = [...(text ? [{ type: 'text' as const, content }] : []), ...context]
+  if (parts.length === 0) return
+  await db.transaction('rw', db.messages, db.chatSessions, db.diagrams, async () => {
+    await db.messages.add({ chatSessionId, sender: 'user', on: new Date(), isSent: true, parts })
     const session = await db.chatSessions.get(chatSessionId)
     if (session?.title === NEW_CHAT_TITLE) {
-      await db.chatSessions.update(chatSessionId, { title: titleFrom(content) })
+      await db.chatSessions.update(chatSessionId, { title: titleFrom(text || (await contextName(context[0]))) })
     }
   })
   await reply(chatSessionId)
+}
+
+async function contextName(part: ContextPart): Promise<string> {
+  if (part.type === 'attachment') return part.name
+  return (await db.diagrams.get(part.diagramId))?.name ?? NEW_CHAT_TITLE
 }
 
 /**
@@ -109,6 +118,7 @@ async function providerFor(session: ChatSessionRecord): Promise<ProviderRecord |
 
 function toMessage(record: MessageRecord, diagrams: DiagramRecord[]): Message {
   const contents = record.parts.flatMap((part): MessagePart[] => {
+    if (part.type === 'attachment') return [new Attachment(part)]
     if (part.type !== 'diagram-reference') return [new MessagePart(part.type, part.content)]
     const diagram = diagrams.find((d) => d.id === part.diagramId)
     return diagram ? [new DiagramReference(new Diagram(diagram.type, diagram.name, diagram.source))] : []

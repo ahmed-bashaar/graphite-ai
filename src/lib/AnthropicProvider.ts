@@ -130,7 +130,24 @@ function toMessages(turns: ChatTurn[]): MessageParam[] {
         })),
       }
     }
-    if (turn.role === 'user') return turn
+    if (turn.role === 'user') {
+      if (!('attachments' in turn) || !turn.attachments?.length) return { role: 'user', content: turn.content }
+      // Images and documents go before the text, as Anthropic recommends.
+      return {
+        role: 'user',
+        content: [
+          ...turn.attachments.map((a): Anthropic.Beta.BetaContentBlockParam =>
+            a.mediaType === 'application/pdf'
+              ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: a.data }, title: a.name }
+              : {
+                  type: 'image',
+                  source: { type: 'base64', media_type: a.mediaType as 'image/png', data: a.data },
+                },
+          ),
+          ...(turn.content ? [{ type: 'text' as const, text: turn.content }] : []),
+        ],
+      }
+    }
     // Replay the model's own blocks unchanged: thinking signatures must survive the tool loop.
     if ('native' in turn && turn.native) {
       return { role: 'assistant', content: turn.native as Anthropic.Beta.BetaContentBlockParam[] }

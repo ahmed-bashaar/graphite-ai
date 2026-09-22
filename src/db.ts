@@ -25,6 +25,8 @@ export type MessagePartRecord =
   | { type: 'text'; content: string }
   | { type: 'code'; content: string; language?: string }
   | { type: 'diagram-reference'; diagramId: number }
+  /** A file the user attached (see Attachment in src/lib); `data` is base64. */
+  | { type: 'attachment'; name: string; mediaType: string; data: string }
 
 export interface MessageRecord {
   id: number

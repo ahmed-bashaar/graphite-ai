@@ -1,5 +1,5 @@
 import type { AgenticTool } from './AgenticTool.ts'
-import type { ChatTurn, ToolCall } from './chatTurns.ts'
+import { unreadablePdfNote, type ChatTurn, type ToolCall } from './chatTurns.ts'
 import { joinUrl, readLines, request, requestJson } from './http.ts'
 import { LlmModel, type ModelStep, type StepOptions } from './LlmModel.ts'
 import { LlmProvider, type ProviderOptions } from './LlmProvider.ts'
@@ -123,6 +123,16 @@ function toMessages(turns: ChatTurn[]): Record<string, unknown>[] {
           role: 'assistant',
           content: turn.content,
           tool_calls: turn.toolCalls.map((c) => ({ function: { name: c.name, arguments: c.args } })),
+        },
+      ]
+    }
+    if ('attachments' in turn && turn.attachments?.length) {
+      const images = turn.attachments.filter((a) => a.mediaType !== 'application/pdf').map((a) => a.data)
+      return [
+        {
+          role: turn.role,
+          content: [turn.content, unreadablePdfNote(turn.attachments)].filter(Boolean).join('\n\n'),
+          ...(images.length > 0 && { images }),
         },
       ]
     }
