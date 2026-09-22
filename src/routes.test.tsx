@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderMermaid } from './components/renderMermaid.ts'
@@ -58,6 +58,7 @@ describe('routes', () => {
   beforeEach(async () => {
     await db.delete()
     await db.open()
+    localStorage.clear()
   })
 
   afterEach(() => {
@@ -139,6 +140,51 @@ describe('routes', () => {
       await userEvent.click(await within(sidebar).findByRole('link', { name: /class model/i }))
       await expectPath(router, `/projects/${projectId}/chats/${chatSessionId}`)
       expect(await screen.findByRole('button', { name: /navigation/i })).toHaveAttribute('aria-expanded', 'false')
+    })
+
+    it('collapses and expands the sidebar, remembering the choice', async () => {
+      const projectId = await seedProject()
+      renderAt(`/projects/${projectId}`)
+
+      await userEvent.click(await screen.findByRole('button', { name: /collapse sidebar/i }))
+      const sidebar = screen.getByRole('complementary')
+      expect(sidebar).toHaveAttribute('data-collapsed', 'true')
+      expect(screen.queryByRole('button', { name: /collapse sidebar/i })).toBeNull()
+
+      // Still collapsed after a reload.
+      cleanup()
+      renderAt(`/projects/${projectId}`)
+      expect(await screen.findByRole('complementary')).toHaveAttribute('data-collapsed', 'true')
+      await userEvent.click(screen.getByRole('button', { name: /expand sidebar/i }))
+      expect(screen.getByRole('complementary')).toHaveAttribute('data-collapsed', 'false')
+      expect(screen.queryByRole('button', { name: /expand sidebar/i })).toBeNull()
+    })
+
+    it('resizes the sidebar by dragging or with the keyboard, within limits, remembering the width', async () => {
+      const projectId = await seedProject()
+      renderAt(`/projects/${projectId}`)
+
+      const handle = await screen.findByRole('separator', { name: /resize sidebar/i })
+      expect(handle).toHaveAttribute('aria-valuenow', '256')
+      handle.focus()
+      await userEvent.keyboard('{ArrowRight}{ArrowRight}')
+      expect(handle).toHaveAttribute('aria-valuenow', '288')
+
+      fireEvent.pointerDown(handle, { clientX: 288, pointerId: 1 })
+      fireEvent.pointerMove(window, { clientX: 340, pointerId: 1 })
+      fireEvent.pointerUp(window, { clientX: 340, pointerId: 1 })
+      expect(handle).toHaveAttribute('aria-valuenow', '340')
+      expect(screen.getByRole('complementary').style.getPropertyValue('--sidebar-width')).toBe('340px')
+
+      fireEvent.pointerDown(handle, { clientX: 340, pointerId: 1 })
+      fireEvent.pointerMove(window, { clientX: 5000, pointerId: 1 })
+      fireEvent.pointerUp(window, { clientX: 5000, pointerId: 1 })
+      expect(handle).toHaveAttribute('aria-valuemax', '480')
+      expect(handle).toHaveAttribute('aria-valuenow', '480')
+
+      cleanup()
+      renderAt(`/projects/${projectId}`)
+      expect(await screen.findByRole('separator', { name: /resize sidebar/i })).toHaveAttribute('aria-valuenow', '480')
     })
 
     it('reports a missing project', async () => {

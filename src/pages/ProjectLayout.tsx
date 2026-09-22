@@ -1,10 +1,19 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useEffect, useId, useState, type MouseEvent } from 'react'
+import {
+  useEffect,
+  useId,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent,
+  type PointerEvent,
+} from 'react'
 import { NavLink, Outlet, useNavigate, useParams } from 'react-router'
 import { Brand } from '../components/Brand.tsx'
 import { ConfirmDelete } from '../components/ConfirmDelete.tsx'
 import { EditableTitle } from '../components/EditableTitle.tsx'
 import { SettingsIcon } from '../components/SettingsIcon.tsx'
+import { useStoredState } from '../components/useStoredState.ts'
 import { db } from '../db.ts'
 import { deleteProject } from '../mutations.ts'
 import { NEW_CHAT_TITLE } from '../agent/chatTitle.ts'
@@ -19,15 +28,65 @@ const navItem = ({ isActive }: { isActive: boolean }) =>
 
 const sectionHeading = 'px-3 text-xs font-medium uppercase tracking-wider text-zinc-400'
 
+/** Sidebar width limits on md+ screens, in pixels; arrow keys resize by one step. */
+const SIDEBAR = { min: 200, max: 480, initial: 256, step: 16 }
+
+const clampWidth = (width: number) => Math.round(Math.min(SIDEBAR.max, Math.max(SIDEBAR.min, width)))
+const parseWidth = (stored: unknown) => (typeof stored === 'number' ? clampWidth(stored) : undefined)
+const parseFlag = (stored: unknown) => (typeof stored === 'boolean' ? stored : undefined)
+
+const iconButton =
+  'grid size-9 shrink-0 place-items-center rounded-lg text-zinc-600 hover:bg-zinc-200/70 dark:text-zinc-300 dark:hover:bg-zinc-800'
+
 /**
  * The wireframe shell: sidebar (chats + diagrams), top bar, and the routed
- * page. Below the md breakpoint the sidebar is a drawer opened from the top bar.
+ * page. On md+ screens the sidebar can be resized (drag its edge, or arrow
+ * keys on it) and collapsed, both remembered in this browser. Below md it is
+ * a drawer opened from the top bar.
  */
 export function ProjectLayout() {
   const projectId = Number(useParams().projectId)
   const navigate = useNavigate()
   const [navOpen, setNavOpen] = useState(false)
+  const [collapsed, setCollapsed] = useStoredState('graphite.sidebar.collapsed', false, parseFlag)
+  const [width, setWidth] = useStoredState('graphite.sidebar.width', SIDEBAR.initial, parseWidth)
   const sidebarId = useId()
+
+  // Dragging the edge resizes from where the pointer went down. Text selection
+  // is off meanwhile: a selection would turn the gesture into a native drag,
+  // which cancels the pointer events.
+  function startResize(event: PointerEvent) {
+    event.preventDefault()
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+    const startX = event.clientX
+    const startWidth = width
+    const userSelect = document.body.style.userSelect
+    document.body.style.userSelect = 'none'
+    const widthAt = (e: globalThis.PointerEvent) => clampWidth(startWidth + e.clientX - startX)
+    const move = (e: globalThis.PointerEvent) => setWidth(widthAt(e))
+    const stop = (e: globalThis.PointerEvent) => {
+      if (e.type === 'pointerup') setWidth(widthAt(e))
+      document.body.style.userSelect = userSelect
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', stop)
+      window.removeEventListener('pointercancel', stop)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', stop)
+    window.addEventListener('pointercancel', stop)
+  }
+
+  function resizeWithKeys(event: ReactKeyboardEvent) {
+    const next = {
+      ArrowLeft: width - SIDEBAR.step,
+      ArrowRight: width + SIDEBAR.step,
+      Home: SIDEBAR.min,
+      End: SIDEBAR.max,
+    }[event.key]
+    if (next === undefined) return
+    event.preventDefault()
+    setWidth(clampWidth(next))
+  }
 
   useEffect(() => {
     if (!navOpen) return
@@ -63,13 +122,25 @@ export function ProjectLayout() {
       )}
       <aside
         id={sidebarId}
+        data-collapsed={collapsed}
         onClick={closeOnLink}
-        className={`fixed inset-y-0 left-0 z-40 flex w-72 max-w-[85vw] shrink-0 flex-col gap-4 border-r border-zinc-200 bg-zinc-50 p-3 transition-transform duration-200 md:static md:w-64 md:translate-x-0 dark:border-zinc-800 dark:bg-zinc-900 ${
+        style={{ '--sidebar-width': `${width}px` } as CSSProperties}
+        className={`fixed inset-y-0 left-0 z-40 flex w-72 max-w-[85vw] shrink-0 flex-col gap-4 border-r border-zinc-200 bg-zinc-50 p-3 transition-transform duration-200 md:relative md:w-(--sidebar-width) md:max-w-none md:translate-x-0 dark:border-zinc-800 dark:bg-zinc-900 ${
           navOpen ? 'translate-x-0 shadow-xl' : 'max-md:invisible -translate-x-full'
-        }`}
+        } ${collapsed ? 'md:hidden' : ''}`}
       >
-        <div className="px-2 pt-1">
+        <div className="flex items-center justify-between gap-2 pl-2">
           <Brand />
+          {!collapsed && (
+            <button
+              type="button"
+              aria-label="Collapse sidebar"
+              onClick={() => setCollapsed(true)}
+              className={`${iconButton} max-md:hidden`}
+            >
+              <PanelIcon />
+            </button>
+          )}
         </div>
 
         <button
@@ -108,6 +179,20 @@ export function ProjectLayout() {
           <SettingsIcon />
           Settings
         </NavLink>
+
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize sidebar"
+          aria-controls={sidebarId}
+          aria-valuenow={width}
+          aria-valuemin={SIDEBAR.min}
+          aria-valuemax={SIDEBAR.max}
+          tabIndex={0}
+          onPointerDown={startResize}
+          onKeyDown={resizeWithKeys}
+          className="absolute inset-y-0 -right-1 z-10 w-2 cursor-col-resize touch-none outline-none hover:bg-zinc-300/60 focus-visible:bg-zinc-400/60 max-md:hidden dark:hover:bg-zinc-700/60"
+        />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -124,6 +209,16 @@ export function ProjectLayout() {
               <path d="M3 5h14M3 10h14M3 15h14" strokeLinecap="round" />
             </svg>
           </button>
+          {collapsed && (
+            <button
+              type="button"
+              aria-label="Expand sidebar"
+              onClick={() => setCollapsed(false)}
+              className={`${iconButton} -ml-1 max-md:hidden`}
+            >
+              <PanelIcon />
+            </button>
+          )}
           {project && (
             <>
               <EditableTitle
@@ -154,5 +249,14 @@ export function ProjectLayout() {
         </main>
       </div>
     </div>
+  )
+}
+
+function PanelIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+      <rect x="2.5" y="3.5" width="15" height="13" rx="2" />
+      <path d="M7.5 3.5v13" />
+    </svg>
   )
 }
