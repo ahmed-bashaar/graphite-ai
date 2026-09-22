@@ -110,7 +110,7 @@ export function ProjectLayout() {
   async function newChat() {
     const id = await db.chatSessions.add({ projectId, title: NEW_CHAT_TITLE, draft: '' })
     setNavOpen(false)
-    navigate(`/projects/${projectId}/chats/${id}`)
+    navigate(`/app/projects/${projectId}/chats/${id}`)
   }
 
   if (project === null) return <NotFound what="Project" />
@@ -175,7 +175,7 @@ export function ProjectLayout() {
           </section>
         </nav>
 
-        <NavLink to="/settings" className={`${navItem({ isActive: false })} flex items-center gap-2`}>
+        <NavLink to="/app/settings" className={`${navItem({ isActive: false })} flex items-center gap-2`}>
           <SettingsIcon />
           Settings
         </NavLink>
@@ -237,7 +237,7 @@ export function ProjectLayout() {
                   detail="and all its chats and diagrams"
                   onConfirm={async () => {
                     await deleteProject(projectId)
-                    navigate('/')
+                    navigate('/app')
                   }}
                 />
               </div>

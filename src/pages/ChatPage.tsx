@@ -150,7 +150,7 @@ function Chat({ chatSessionId }: { chatSessionId: number }) {
               noun="chat"
               onConfirm={async () => {
                 await deleteChat(chatSessionId)
-                navigate(`/projects/${session.projectId}`)
+                navigate(`/app/projects/${session.projectId}`)
               }}
             />
           </div>
@@ -213,7 +213,7 @@ function Chat({ chatSessionId }: { chatSessionId: number }) {
           {providers?.length === 0 ? (
             <span>
               No model configured.{' '}
-              <Link to="/settings" className="font-medium text-zinc-900 underline dark:text-zinc-100">
+              <Link to="/app/settings" className="font-medium text-zinc-900 underline dark:text-zinc-100">
                 Add a provider
               </Link>{' '}
               so GraphiteAI can reply.
@@ -402,7 +402,7 @@ function useReferencedDiagram(diagramId: number, versionId?: number) {
 }
 
 const diagramHref = (projectId: number | undefined, diagramId: number, versionId: number | undefined, earlier: boolean) =>
-  `/projects/${projectId}/diagrams/${diagramId}${earlier ? `?version=${versionId}` : ''}`
+  `/app/projects/${projectId}/diagrams/${diagramId}${earlier ? `?version=${versionId}` : ''}`
 
 /** A diagram the user referenced: a compact link rather than a preview. */
 function UserDiagramReference({ diagramId, versionId, projectId }: ReferenceProps) {

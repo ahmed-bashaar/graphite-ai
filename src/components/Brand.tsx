@@ -5,7 +5,7 @@ import { Logo } from './Logo.tsx'
 export function Brand() {
   return (
     <Link
-      to="/"
+      to="/app"
       className="flex items-center gap-2.5 rounded-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-50"
     >
       <Logo />

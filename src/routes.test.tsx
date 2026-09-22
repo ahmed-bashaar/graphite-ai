@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderMermaid } from './components/renderMermaid.ts'
@@ -65,47 +65,175 @@ describe('routes', () => {
     vi.unstubAllGlobals()
   })
 
-  describe('projects page', () => {
-    it('is the landing page and shows an empty state', async () => {
+  describe('landing page', () => {
+    it('introduces GraphiteAI at the site root', () => {
       renderAt('/')
+      expect(screen.getByRole('heading', { level: 1, name: /describe the system\.\s*get the diagram\./i })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: /built for how you actually design/i })).toBeInTheDocument()
+      for (const feature of [/version history/i, /local-only/i, /your models, your providers/i, /checks its work/i]) {
+        expect(screen.getByRole('heading', { level: 3, name: feature })).toBeInTheDocument()
+      }
+    })
+
+    it('opens the app from the header and the main call to action', async () => {
+      const router = renderAt('/')
+      expect(screen.getByRole('link', { name: /open the app/i })).toHaveAttribute('href', '/app')
+      await userEvent.click(screen.getByRole('link', { name: /open graphiteai/i }))
+      await expectPath(router, '/app')
+      expect(await screen.findByRole('heading', { name: /projects/i })).toBeInTheDocument()
+    })
+  })
+
+  describe('landing page animation', () => {
+    const userText = 'Customers place orders. Each order has line items and one payment.'
+    const agentText = 'Here is the class diagram for the ordering flow.'
+
+    /** The visible (animated) text inside `el`; screen readers get the full text separately. */
+    const shownIn = (el: Element) =>
+      [...el.querySelectorAll('[data-shown]')].map((part) => part.textContent).join(' | ')
+    const revealed = (el: Element) => el.closest('[data-revealed]')?.getAttribute('data-revealed') === 'true'
+    const headline = () => screen.getByRole('heading', { level: 1 })
+    const example = () => screen.getByRole('region', { name: /example chat/i })
+    // The first match is the screen-reader copy; once typed, the visible copy matches too.
+    const bubble = (text: string) => within(example()).getAllByText(text)[0].parentElement!
+    const diagramParts = () => [...example().querySelector('svg[role=img]')!.querySelectorAll('[data-revealed]')]
+    const cards = () => screen.getAllByRole('article')
+
+    /** Lets the animation play until `done()` holds (failing after 30s of animation time). */
+    async function playUntil(done: () => boolean) {
+      for (let t = 0; t < 30_000 && !done(); t += 20) await act(() => vi.advanceTimersByTimeAsync(20))
+      expect(done()).toBe(true)
+    }
+
+    beforeEach(() => {
+      // Only timeouts: Motion's frame loop must keep real animation frames, or it stalls for later tests.
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('types the headline, streams its second line, then brings in the rest of the hero', async () => {
+      renderAt('/')
+      const subheadline = screen.getByText(/tell graphiteai how your system works/i)
+      const badge = screen.getByText(/an ai agent for uml/i)
+      const button = screen.getByRole('link', { name: /open graphiteai/i })
+      expect(headline()).toHaveAccessibleName(/describe the system\.\s*get the diagram\./i)
+      expect(shownIn(headline())).toBe(' | ')
+
+      await playUntil(() => shownIn(headline()).startsWith('Describe the'))
+      expect(shownIn(headline())).toBe('Describe the | ')
+      expect(revealed(subheadline)).toBe(false)
+
+      await playUntil(() => shownIn(headline()).startsWith('Describe the system. | Get'))
+      expect(revealed(subheadline)).toBe(false)
+
+      await playUntil(() => revealed(subheadline))
+      expect(shownIn(headline())).toBe('Describe the system. | Get the diagram.')
+      expect(revealed(badge) || revealed(button)).toBe(false)
+
+      await playUntil(() => revealed(badge))
+      expect(revealed(button)).toBe(true)
+    })
+
+    it('plays the example chat: the user types, the agent streams its answer, then the diagram builds up', async () => {
+      renderAt('/')
+      await playUntil(() => revealed(screen.getByRole('link', { name: /open graphiteai/i })))
+      expect(revealed(example())).toBe(false)
+
+      await playUntil(() => shownIn(bubble(userText)).length > 10)
+      expect(revealed(example())).toBe(true)
+      expect(shownIn(bubble(userText))).not.toBe(userText)
+      expect(revealed(bubble(agentText))).toBe(false)
+
+      await playUntil(() => revealed(bubble(agentText)))
+      expect(shownIn(bubble(userText))).toBe(userText)
+      expect(within(example()).getByText(/working/i)).toBeInTheDocument()
+      expect(shownIn(bubble(agentText))).toBe('')
+
+      await playUntil(() => shownIn(bubble(agentText)) === agentText)
+      expect(within(example()).getByText(/worked through 3 steps/i)).toBeInTheDocument()
+      const card = within(example()).getByText('Order service')
+      expect(revealed(card)).toBe(false)
+
+      await playUntil(() => revealed(card))
+      expect(diagramParts().some(revealed)).toBe(false)
+      await playUntil(() => revealed(diagramParts()[0]))
+      expect(diagramParts().every(revealed)).toBe(false)
+      await playUntil(() => diagramParts().every(revealed))
+    })
+
+    it('brings in the feature cards one by one', async () => {
+      renderAt('/')
+      expect(cards()).toHaveLength(4)
+      await playUntil(() => revealed(cards()[0]))
+      expect(revealed(cards()[3])).toBe(false)
+      await playUntil(() => cards().every(revealed))
+    })
+
+    it('shows everything at once when the user prefers reduced motion', () => {
+      vi.stubGlobal(
+        'matchMedia',
+        vi.fn((query: string) => ({
+          matches: query === '(prefers-reduced-motion: reduce)',
+          media: query,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+        })),
+      )
+      renderAt('/')
+      expect(shownIn(headline())).toBe('Describe the system. | Get the diagram.')
+      expect(shownIn(bubble(userText))).toBe(userText)
+      expect(shownIn(bubble(agentText))).toBe(agentText)
+      expect(within(example()).getByText(/worked through 3 steps/i)).toBeInTheDocument()
+      for (const el of [...document.querySelectorAll('[data-revealed]')]) {
+        expect(el).toHaveAttribute('data-revealed', 'true')
+      }
+    })
+  })
+
+  describe('projects page', () => {
+    it('lives at /app and shows an empty state', async () => {
+      renderAt('/app')
       expect(screen.getByRole('heading', { name: /projects/i })).toBeInTheDocument()
       expect(await screen.findByText(/no projects yet/i)).toBeInTheDocument()
     })
 
     it('creates a project and opens it', async () => {
-      const router = renderAt('/')
+      const router = renderAt('/app')
       await userEvent.type(screen.getByLabelText(/project name/i), 'Library system')
       await userEvent.click(screen.getByRole('button', { name: /create project/i }))
 
       const [project] = await db.projects.toArray()
       expect(project.name).toBe('Library system')
-      await expectPath(router, `/projects/${project.id}`)
+      await expectPath(router, `/app/projects/${project.id}`)
     })
 
     it('lists existing projects as links into the project', async () => {
       const id = await seedProject()
-      const router = renderAt('/')
+      const router = renderAt('/app')
       await userEvent.click(await screen.findByRole('link', { name: /library system/i }))
-      await expectPath(router, `/projects/${id}`)
+      await expectPath(router, `/app/projects/${id}`)
     })
   })
 
   describe('project layout', () => {
     it('shows the project name in the top bar and links back to projects', async () => {
       const id = await seedProject()
-      const router = renderAt(`/projects/${id}`)
+      const router = renderAt(`/app/projects/${id}`)
       const banner = screen.getByRole('banner')
       expect(await within(banner).findByText('Library system')).toBeInTheDocument()
 
       await userEvent.click(screen.getByRole('link', { name: /graphiteai/i }))
-      await expectPath(router, '/')
+      await expectPath(router, '/app')
     })
 
     it('lists the project chat sessions and diagrams in the sidebar', async () => {
       const projectId = await seedProject()
       await db.chatSessions.add({ projectId, draft: '', title: 'Class model' })
       await db.diagrams.add({ projectId, type: 'class', name: 'Domain', source: '' })
-      renderAt(`/projects/${projectId}`)
+      renderAt(`/app/projects/${projectId}`)
 
       const sidebar = screen.getByRole('navigation', { name: /project/i })
       expect(await within(sidebar).findByRole('link', { name: /class model/i })).toBeInTheDocument()
@@ -114,18 +242,18 @@ describe('routes', () => {
 
     it('starts a new chat session and opens it', async () => {
       const projectId = await seedProject()
-      const router = renderAt(`/projects/${projectId}`)
+      const router = renderAt(`/app/projects/${projectId}`)
       await userEvent.click(await screen.findByRole('button', { name: /new chat/i }))
 
       const [session] = await db.chatSessions.toArray()
       expect(session.projectId).toBe(projectId)
-      await expectPath(router, `/projects/${projectId}/chats/${session.id}`)
+      await expectPath(router, `/app/projects/${projectId}/chats/${session.id}`)
     })
 
     it('opens the sidebar as a drawer from the top bar, closing it after choosing a page', async () => {
       const projectId = await seedProject()
       const chatSessionId = await db.chatSessions.add({ projectId, draft: '', title: 'Class model' })
-      const router = renderAt(`/projects/${projectId}`)
+      const router = renderAt(`/app/projects/${projectId}`)
 
       const toggle = await screen.findByRole('button', { name: /navigation/i })
       expect(toggle).toHaveAttribute('aria-expanded', 'false')
@@ -138,13 +266,13 @@ describe('routes', () => {
       await userEvent.click(toggle)
       const sidebar = screen.getByRole('navigation', { name: /project/i })
       await userEvent.click(await within(sidebar).findByRole('link', { name: /class model/i }))
-      await expectPath(router, `/projects/${projectId}/chats/${chatSessionId}`)
+      await expectPath(router, `/app/projects/${projectId}/chats/${chatSessionId}`)
       expect(await screen.findByRole('button', { name: /navigation/i })).toHaveAttribute('aria-expanded', 'false')
     })
 
     it('collapses and expands the sidebar, remembering the choice', async () => {
       const projectId = await seedProject()
-      renderAt(`/projects/${projectId}`)
+      renderAt(`/app/projects/${projectId}`)
 
       await userEvent.click(await screen.findByRole('button', { name: /collapse sidebar/i }))
       const sidebar = screen.getByRole('complementary')
@@ -153,7 +281,7 @@ describe('routes', () => {
 
       // Still collapsed after a reload.
       cleanup()
-      renderAt(`/projects/${projectId}`)
+      renderAt(`/app/projects/${projectId}`)
       expect(await screen.findByRole('complementary')).toHaveAttribute('data-collapsed', 'true')
       await userEvent.click(screen.getByRole('button', { name: /expand sidebar/i }))
       expect(screen.getByRole('complementary')).toHaveAttribute('data-collapsed', 'false')
@@ -162,7 +290,7 @@ describe('routes', () => {
 
     it('resizes the sidebar by dragging or with the keyboard, within limits, remembering the width', async () => {
       const projectId = await seedProject()
-      renderAt(`/projects/${projectId}`)
+      renderAt(`/app/projects/${projectId}`)
 
       const handle = await screen.findByRole('separator', { name: /resize sidebar/i })
       expect(handle).toHaveAttribute('aria-valuenow', '256')
@@ -183,12 +311,12 @@ describe('routes', () => {
       expect(handle).toHaveAttribute('aria-valuenow', '480')
 
       cleanup()
-      renderAt(`/projects/${projectId}`)
+      renderAt(`/app/projects/${projectId}`)
       expect(await screen.findByRole('separator', { name: /resize sidebar/i })).toHaveAttribute('aria-valuenow', '480')
     })
 
     it('reports a missing project', async () => {
-      renderAt('/projects/999')
+      renderAt('/app/projects/999')
       expect(await screen.findByText(/project not found/i)).toBeInTheDocument()
     })
   })
@@ -201,7 +329,7 @@ describe('routes', () => {
         { chatSessionId, sender: 'user', on: new Date(1), isSent: true, parts: [{ type: 'text', content: 'Draw a class' }] },
         { chatSessionId, sender: 'GraphiteAI', on: new Date(2), isSent: true, parts: [{ type: 'text', content: 'Here it is' }] },
       ])
-      renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+      renderAt(`/app/projects/${projectId}/chats/${chatSessionId}`)
 
       const items = await screen.findAllByRole('article')
       expect(items).toHaveLength(2)
@@ -218,7 +346,7 @@ describe('routes', () => {
         chatSessionId, sender: 'GraphiteAI', on: new Date(), isSent: true,
         parts: [{ type: 'text', content: '<b>bold</b>' }],
       })
-      renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+      renderAt(`/app/projects/${projectId}/chats/${chatSessionId}`)
 
       const [item] = await screen.findAllByRole('article')
       expect(item).toHaveTextContent('<b>bold</b>')
@@ -229,7 +357,7 @@ describe('routes', () => {
       const { projectId, chatSessionId } = await seedChat()
       await seedOllama()
       stubOllamaReply('Here you go:\n\n```mermaid\n---\ntitle: Domain\n---\nclassDiagram\n  class Book\n```')
-      renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+      renderAt(`/app/projects/${projectId}/chats/${chatSessionId}`)
 
       const input = await screen.findByRole('textbox', { name: /message/i })
       await userEvent.type(input, 'Model a library{Enter}')
@@ -245,7 +373,7 @@ describe('routes', () => {
       expect(agent).toHaveTextContent('Here you go:')
       expect(await within(agent).findByRole('link', { name: /domain/i })).toHaveAttribute(
         'href',
-        expect.stringMatching(new RegExp(`/projects/${projectId}/diagrams/\\d+$`)),
+        expect.stringMatching(new RegExp(`/app/projects/${projectId}/diagrams/\\d+$`)),
       )
       expect(await within(agent).findByTestId('mermaid-svg')).toHaveTextContent('class Book')
       const sidebar = screen.getByRole('navigation', { name: /project/i })
@@ -259,7 +387,7 @@ describe('routes', () => {
       let answer: (value: Response) => void = () => {}
       const fetch = vi.fn(() => new Promise<Response>((resolve) => (answer = resolve)))
       vi.stubGlobal('fetch', fetch)
-      renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+      renderAt(`/app/projects/${projectId}/chats/${chatSessionId}`)
 
       await userEvent.type(await screen.findByRole('textbox', { name: /message/i }), 'hi{Enter}')
 
@@ -276,7 +404,7 @@ describe('routes', () => {
       const { projectId, chatSessionId } = await seedChat()
       await seedOllama()
       const stream = stubOllamaStream()
-      renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+      renderAt(`/app/projects/${projectId}/chats/${chatSessionId}`)
 
       await userEvent.type(await screen.findByRole('textbox', { name: /message/i }), 'hi{Enter}')
       await vi.waitFor(() => expect(stream.requests).toBe(1))
@@ -309,13 +437,13 @@ describe('routes', () => {
         parts: [{ type: 'diagram-reference' as const, diagramId, ...(pinned && { versionId: pinned }) }],
       })
       await db.messages.bulkAdd([agentMessage(1, v1), agentMessage(2, v2), agentMessage(3)])
-      renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+      renderAt(`/app/projects/${projectId}/chats/${chatSessionId}`)
 
       const [earlier, latest, unpinned] = await screen.findAllByRole('article')
       expect(await within(earlier).findByTestId('mermaid-svg')).not.toHaveTextContent('class Loan')
       expect(within(earlier).getByRole('link', { name: /earlier version/i })).toHaveAttribute(
         'href',
-        `/projects/${projectId}/diagrams/${diagramId}?version=${v1}`,
+        `/app/projects/${projectId}/diagrams/${diagramId}?version=${v1}`,
       )
       expect(await within(latest).findByTestId('mermaid-svg')).toHaveTextContent('class Loan')
       expect(within(latest).queryByText(/earlier version/i)).toBeNull()
@@ -329,7 +457,7 @@ describe('routes', () => {
         'agent',
       )
       await updateDiagramSource(diagramId, 'classDiagram\n  class Book\n  class Loan', 'agent')
-      renderAt(`/projects/${projectId}/diagrams/${diagramId}?version=${v1}`)
+      renderAt(`/app/projects/${projectId}/diagrams/${diagramId}?version=${v1}`)
 
       expect(await screen.findByText(/viewing an earlier version/i)).toBeInTheDocument()
       expect(screen.getByRole('region', { name: /version history/i })).toBeInTheDocument()
@@ -340,7 +468,7 @@ describe('routes', () => {
       const { projectId, chatSessionId } = await seedChat()
       await seedOllama()
       const stream = stubOllamaStream()
-      renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+      renderAt(`/app/projects/${projectId}/chats/${chatSessionId}`)
 
       await userEvent.type(await screen.findByRole('textbox', { name: /message/i }), 'hi{Enter}')
       await vi.waitFor(() => expect(stream.requests).toBe(1))
@@ -361,7 +489,7 @@ describe('routes', () => {
       await db.diagrams.add({ projectId, type: 'class', name: 'Domain model', source: 'classDiagram' })
       await seedOllama()
       const stream = stubOllamaStream()
-      renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+      renderAt(`/app/projects/${projectId}/chats/${chatSessionId}`)
 
       await userEvent.type(await screen.findByRole('textbox', { name: /message/i }), 'hi{Enter}')
       await vi.waitFor(() => expect(stream.requests).toBe(1))
@@ -389,7 +517,7 @@ describe('routes', () => {
       const { projectId, chatSessionId } = await seedChat()
       await seedOllama()
       const stream = stubOllamaStream()
-      renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+      renderAt(`/app/projects/${projectId}/chats/${chatSessionId}`)
 
       await userEvent.type(await screen.findByRole('textbox', { name: /message/i }), 'hi{Enter}')
       await vi.waitFor(() => expect(stream.requests).toBe(1))
@@ -412,7 +540,7 @@ describe('routes', () => {
       const { projectId, chatSessionId } = await seedChat()
       await seedOllama()
       const stream = stubOllamaStream()
-      renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+      renderAt(`/app/projects/${projectId}/chats/${chatSessionId}`)
 
       await userEvent.type(await screen.findByRole('textbox', { name: /message/i }), 'hi{Enter}')
       await vi.waitFor(() => expect(stream.requests).toBe(1))
@@ -426,7 +554,7 @@ describe('routes', () => {
       const { projectId, chatSessionId } = await seedChat()
       await seedOllama()
       vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('Failed to fetch'))))
-      renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+      renderAt(`/app/projects/${projectId}/chats/${chatSessionId}`)
 
       await userEvent.type(await screen.findByRole('textbox', { name: /message/i }), 'hi{Enter}')
       expect(await screen.findByRole('alert')).toHaveTextContent(/failed to fetch/i)
@@ -449,7 +577,7 @@ describe('routes', () => {
         const { projectId, chatSessionId } = await seedChat()
         await seedOllama()
         stubOllamaReply('Thanks!')
-        renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+        renderAt(`/app/projects/${projectId}/chats/${chatSessionId}`)
 
         await userEvent.click(await screen.findByRole('button', { name: /add context/i }))
         expect(screen.getByRole('menuitem', { name: /upload images or files/i })).toBeInTheDocument()
@@ -485,7 +613,7 @@ describe('routes', () => {
           isSent: true,
           parts: [{ type: 'attachment', name: 'sketch.png', mediaType: 'image/png', data: 'iVBORw==' }],
         })
-        renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+        renderAt(`/app/projects/${projectId}/chats/${chatSessionId}`)
 
         await userEvent.click(await screen.findByRole('button', { name: 'Open sketch.png' }))
         const viewer = screen.getByRole('dialog', { name: 'sketch.png' })
@@ -502,7 +630,7 @@ describe('routes', () => {
         const diagramId = await db.diagrams.add({ projectId, type: 'class', name: 'Domain model', source: 'classDiagram' })
         await seedOllama()
         stubOllamaReply('Sure.')
-        renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+        renderAt(`/app/projects/${projectId}/chats/${chatSessionId}`)
 
         await userEvent.click(await screen.findByRole('button', { name: /add context/i }))
         await userEvent.click(await screen.findByRole('menuitem', { name: /domain model/i }))
@@ -516,7 +644,7 @@ describe('routes', () => {
         const [mine] = await screen.findAllByRole('article')
         expect(await within(mine).findByRole('link', { name: /domain model/i })).toHaveAttribute(
           'href',
-          `/projects/${projectId}/diagrams/${diagramId}`,
+          `/app/projects/${projectId}/diagrams/${diagramId}`,
         )
         const [message] = await db.messages.toArray()
         expect(message.parts).toEqual([{ type: 'diagram-reference', diagramId, versionId: expect.any(Number) }])
@@ -524,7 +652,7 @@ describe('routes', () => {
 
       it('attaches images pasted into the message field', async () => {
         const { projectId, chatSessionId } = await seedChat()
-        renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+        renderAt(`/app/projects/${projectId}/chats/${chatSessionId}`)
 
         await userEvent.click(await screen.findByRole('textbox', { name: /message/i }))
         await userEvent.paste({ files: [pngFile()] } as unknown as DataTransfer)
@@ -535,7 +663,7 @@ describe('routes', () => {
 
       it('explains why a file cannot be attached', async () => {
         const { projectId, chatSessionId } = await seedChat()
-        renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+        renderAt(`/app/projects/${projectId}/chats/${chatSessionId}`)
         const user = userEvent.setup({ applyAccept: false })
 
         const big = new File([new Uint8Array(6 * 1024 * 1024)], 'huge.png', { type: 'image/png' })
@@ -551,9 +679,9 @@ describe('routes', () => {
 
     it('asks for a provider when none is configured', async () => {
       const { projectId, chatSessionId } = await seedChat()
-      renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+      renderAt(`/app/projects/${projectId}/chats/${chatSessionId}`)
 
-      expect(await screen.findByRole('link', { name: /add a provider/i })).toHaveAttribute('href', '/settings')
+      expect(await screen.findByRole('link', { name: /add a provider/i })).toHaveAttribute('href', '/app/settings')
       await userEvent.type(screen.getByRole('textbox', { name: /message/i }), 'hi')
       expect(screen.getByRole('button', { name: /send/i })).toBeDisabled()
     })
@@ -562,7 +690,7 @@ describe('routes', () => {
       const { projectId, chatSessionId } = await seedChat()
       await seedOllama()
       const otherId = await db.providers.add({ kind: 'anthropic', name: 'Claude', args: { apiKey: 'k', model: 'claude-opus-5' } })
-      renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+      renderAt(`/app/projects/${projectId}/chats/${chatSessionId}`)
 
       const picker = await screen.findByRole('combobox', { name: /model/i })
       await vi.waitFor(() => expect(within(picker).getAllByRole('option')).toHaveLength(2))
@@ -575,7 +703,7 @@ describe('routes', () => {
     it('does not send blank messages', async () => {
       const projectId = await seedProject()
       const chatSessionId = await db.chatSessions.add({ projectId, draft: '', title: 'New chat' })
-      renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+      renderAt(`/app/projects/${projectId}/chats/${chatSessionId}`)
 
       expect(await screen.findByRole('button', { name: /send/i })).toBeDisabled()
       await userEvent.type(screen.getByRole('textbox', { name: /message/i }), '   ')
@@ -605,7 +733,7 @@ describe('routes', () => {
 
       it('lists the versions, newest first, with who saved them', async () => {
         const { projectId, diagramId } = await seedHistory()
-        renderAt(`/projects/${projectId}/diagrams/${diagramId}`)
+        renderAt(`/app/projects/${projectId}/diagrams/${diagramId}`)
 
         await userEvent.click(await screen.findByRole('button', { name: /history/i }))
         const history = await screen.findByRole('region', { name: /version history/i })
@@ -618,7 +746,7 @@ describe('routes', () => {
 
       it('previews and compares an earlier version, then restores it', async () => {
         const { projectId, diagramId } = await seedHistory()
-        renderAt(`/projects/${projectId}/diagrams/${diagramId}`)
+        renderAt(`/app/projects/${projectId}/diagrams/${diagramId}`)
 
         await userEvent.click(await screen.findByRole('button', { name: /history/i }))
         const history = await screen.findByRole('region', { name: /version history/i })
@@ -642,7 +770,7 @@ describe('routes', () => {
 
       it('records source edits as versions', async () => {
         const { projectId, diagramId } = await seedHistory()
-        renderAt(`/projects/${projectId}/diagrams/${diagramId}`)
+        renderAt(`/app/projects/${projectId}/diagrams/${diagramId}`)
 
         await userEvent.click(await screen.findByRole('button', { name: /edit source/i }))
         const editor = screen.getByRole('textbox', { name: /mermaid source/i })
@@ -655,7 +783,7 @@ describe('routes', () => {
 
     it('draws the diagram as SVG under its name', async () => {
       const { projectId, diagramId } = await seedDiagram()
-      renderAt(`/projects/${projectId}/diagrams/${diagramId}`)
+      renderAt(`/app/projects/${projectId}/diagrams/${diagramId}`)
 
       const figure = await screen.findByRole('figure', { name: 'Domain' })
       expect(await within(figure).findByTestId('mermaid-svg')).toHaveTextContent('Book <|-- Ebook')
@@ -665,7 +793,7 @@ describe('routes', () => {
     it('explains when the diagram cannot be drawn and shows its source', async () => {
       vi.mocked(renderMermaid).mockRejectedValueOnce(new Error('Parse error on line 2'))
       const { projectId, diagramId } = await seedDiagram()
-      renderAt(`/projects/${projectId}/diagrams/${diagramId}`)
+      renderAt(`/app/projects/${projectId}/diagrams/${diagramId}`)
 
       expect(await screen.findByRole('alert')).toHaveTextContent(/parse error on line 2/i)
       expect(screen.getByText(/Book <\|-- Ebook/)).toBeInTheDocument()
@@ -673,7 +801,7 @@ describe('routes', () => {
 
     it('edits the Mermaid source', async () => {
       const { projectId, diagramId } = await seedDiagram()
-      renderAt(`/projects/${projectId}/diagrams/${diagramId}`)
+      renderAt(`/app/projects/${projectId}/diagrams/${diagramId}`)
 
       await userEvent.click(await screen.findByRole('button', { name: /edit source/i }))
       const editor = screen.getByRole('textbox', { name: /mermaid source/i })
@@ -691,7 +819,7 @@ describe('routes', () => {
 
     it('offers the SVG for download', async () => {
       const { projectId, diagramId } = await seedDiagram()
-      renderAt(`/projects/${projectId}/diagrams/${diagramId}`)
+      renderAt(`/app/projects/${projectId}/diagrams/${diagramId}`)
 
       const link = await screen.findByRole('link', { name: /download svg/i })
       expect(link).toHaveAttribute('download', 'Domain.svg')
@@ -700,7 +828,7 @@ describe('routes', () => {
 
     it('reports a missing diagram', async () => {
       const projectId = await seedProject()
-      renderAt(`/projects/${projectId}/diagrams/999`)
+      renderAt(`/app/projects/${projectId}/diagrams/999`)
       expect(await screen.findByText(/diagram not found/i)).toBeInTheDocument()
     })
   })
@@ -715,7 +843,7 @@ describe('routes', () => {
 
     it('renames the project from the top bar', async () => {
       const projectId = await seedProject()
-      renderAt(`/projects/${projectId}`)
+      renderAt(`/app/projects/${projectId}`)
 
       await rename(/rename project/i, /project name/i, 'Library v2')
 
@@ -725,7 +853,7 @@ describe('routes', () => {
 
     it('cancels a rename with Escape', async () => {
       const projectId = await seedProject()
-      renderAt(`/projects/${projectId}`)
+      renderAt(`/app/projects/${projectId}`)
 
       await userEvent.click(await screen.findByRole('button', { name: /rename project/i }))
       await userEvent.type(screen.getByRole('textbox', { name: /project name/i }), ' changed{Escape}')
@@ -736,20 +864,20 @@ describe('routes', () => {
 
     it('deletes the project after confirmation and returns to the projects page', async () => {
       const { projectId } = await seedChat()
-      const router = renderAt(`/projects/${projectId}`)
+      const router = renderAt(`/app/projects/${projectId}`)
 
       await userEvent.click(await screen.findByRole('button', { name: /delete project/i }))
       expect(await db.projects.count()).toBe(1)
       await userEvent.click(screen.getByRole('button', { name: /yes, delete/i }))
 
-      await expectPath(router, '/')
+      await expectPath(router, '/app')
       expect(await db.projects.count()).toBe(0)
       expect(await db.chatSessions.count()).toBe(0)
     })
 
     it('keeps the project when the delete is cancelled', async () => {
       const projectId = await seedProject()
-      renderAt(`/projects/${projectId}`)
+      renderAt(`/app/projects/${projectId}`)
 
       await userEvent.click(await screen.findByRole('button', { name: /delete project/i }))
       await userEvent.click(screen.getByRole('button', { name: /cancel/i }))
@@ -760,7 +888,7 @@ describe('routes', () => {
 
     it('renames and deletes a chat', async () => {
       const { projectId, chatSessionId } = await seedChat()
-      const router = renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+      const router = renderAt(`/app/projects/${projectId}/chats/${chatSessionId}`)
 
       await rename(/rename chat/i, /chat title/i, 'Lending')
       const sidebar = screen.getByRole('navigation', { name: /project/i })
@@ -769,14 +897,14 @@ describe('routes', () => {
       await userEvent.click(screen.getByRole('button', { name: /delete chat/i }))
       await userEvent.click(screen.getByRole('button', { name: /yes, delete/i }))
 
-      await expectPath(router, `/projects/${projectId}`)
+      await expectPath(router, `/app/projects/${projectId}`)
       expect(await db.chatSessions.count()).toBe(0)
     })
 
     it('renames and deletes a diagram', async () => {
       const projectId = await seedProject()
       const diagramId = await db.diagrams.add({ projectId, type: 'class', name: 'Domain', source: 'classDiagram' })
-      const router = renderAt(`/projects/${projectId}/diagrams/${diagramId}`)
+      const router = renderAt(`/app/projects/${projectId}/diagrams/${diagramId}`)
 
       await rename(/rename diagram/i, /diagram name/i, 'Core domain')
       expect(await screen.findByRole('figure', { name: 'Core domain' })).toBeInTheDocument()
@@ -786,7 +914,7 @@ describe('routes', () => {
       await userEvent.click(screen.getByRole('button', { name: /delete diagram/i }))
       await userEvent.click(screen.getByRole('button', { name: /yes, delete/i }))
 
-      await expectPath(router, `/projects/${projectId}`)
+      await expectPath(router, `/app/projects/${projectId}`)
       expect(await db.diagrams.count()).toBe(0)
     })
   })

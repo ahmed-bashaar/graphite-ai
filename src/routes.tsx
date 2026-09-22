@@ -1,6 +1,7 @@
 import type { RouteObject } from 'react-router'
 import { ChatPage } from './pages/ChatPage.tsx'
 import { DiagramPage } from './pages/DiagramPage.tsx'
+import { LandingPage } from './pages/LandingPage.tsx'
 import { NotFound } from './pages/NotFound.tsx'
 import { ProjectHome } from './pages/ProjectHome.tsx'
 import { ProjectLayout } from './pages/ProjectLayout.tsx'
@@ -11,9 +12,10 @@ import { SettingsPage } from './pages/SettingsPage.tsx'
 
 // Shared by the browser router (App.tsx) and the memory router in tests.
 export const routes: RouteObject[] = [
-  { path: '/', element: <ProjectsPage /> },
+  { path: '/', element: <LandingPage /> },
+  { path: '/app', element: <ProjectsPage /> },
   {
-    path: '/projects/:projectId',
+    path: '/app/projects/:projectId',
     element: <ProjectLayout />,
     children: [
       { index: true, element: <ProjectHome /> },
@@ -22,7 +24,7 @@ export const routes: RouteObject[] = [
     ],
   },
   {
-    path: '/settings',
+    path: '/app/settings',
     element: <SettingsLayout />,
     children: [
       { index: true, element: <SettingsPage /> },
