@@ -6,6 +6,10 @@ GraphiteAI is an AI agent for drawing UML diagrams. You describe a system in pla
 
 It runs entirely in your browser. There is no backend: projects, chats, diagrams and API keys are stored locally in IndexedDB, and requests go straight from your browser to the model provider you choose.
 
+## Live Demo
+
+You can view a hosted live demo of the GraphiteAI project at <https://graphite-ai.pages.dev/>
+
 ## Features
 
 - **Chat to diagrams.** Each project has chat sessions. Diagrams in replies are saved to the project and drawn as SVG in the chat.
