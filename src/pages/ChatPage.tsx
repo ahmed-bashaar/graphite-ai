@@ -3,6 +3,7 @@ import { motion } from 'motion/react'
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { NoProviderError, reply, sendMessage } from '../agent/conversation.ts'
+import { AgentWork } from '../components/AgentWork.tsx'
 import { Avatar } from '../components/Avatar.tsx'
 import { ConfirmDelete } from '../components/ConfirmDelete.tsx'
 import { EditableTitle } from '../components/EditableTitle.tsx'
@@ -225,6 +226,11 @@ function Chat({ chatSessionId }: { chatSessionId: number }) {
   )
 }
 
+const bubble = {
+  user: 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900',
+  agent: 'border border-zinc-200 bg-zinc-50 text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100',
+}
+
 function ChatMessage({ message, projectId }: { message: MessageRecord; projectId?: number }) {
   const who = message.sender === 'user' ? 'user' : 'agent'
   return (
@@ -236,13 +242,8 @@ function ChatMessage({ message, projectId }: { message: MessageRecord; projectId
       className={`flex items-start gap-3 ${who === 'user' ? 'flex-row-reverse' : ''}`}
     >
       <Avatar who={who} />
-      <div
-        className={`flex max-w-[80%] min-w-0 flex-col gap-2 rounded-2xl px-4 py-2.5 leading-relaxed ${
-          who === 'user'
-            ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
-            : 'border border-zinc-200 bg-zinc-50 text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100'
-        }`}
-      >
+      <div className={`flex max-w-[80%] min-w-0 flex-col gap-2 rounded-2xl px-4 py-2.5 leading-relaxed ${bubble[who]}`}>
+        {message.steps && <AgentWork steps={message.steps} />}
         {message.parts.map((part, i) => (
           <Part key={i} part={part} projectId={projectId} />
         ))}

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { validateMermaid } from '../components/renderMermaid.ts'
 import { db } from '../db.ts'
 import { NoProviderError, reply, sendMessage } from './conversation.ts'
 import { AGENT_NAME, SYSTEM_PROMPT } from './systemPrompt.ts'
@@ -7,12 +8,20 @@ type FetchLike = (url: string, init?: RequestInit) => Promise<Response>
 
 const mermaid = (title: string, body: string) => `\`\`\`mermaid\n---\ntitle: ${title}\n---\n${body}\n\`\`\``
 
-/** Stubs fetch as an Ollama server that answers with `replies` in order. */
-function ollamaReplies(...replies: (string | Error)[]) {
+type OllamaMessage = { content?: string; tool_calls?: { function: { name: string; arguments: object } }[] }
+
+const toolCall = (name: string, args: object = {}): OllamaMessage => ({
+  content: '',
+  tool_calls: [{ function: { name, arguments: args } }],
+})
+
+/** Stubs fetch as an Ollama server that answers with `replies` in order (text, or a message). */
+function ollamaReplies(...replies: (string | OllamaMessage | Error)[]) {
   const fetch = vi.fn<FetchLike>(async () => {
     const next = replies.shift() ?? 'ok'
     if (next instanceof Error) throw next
-    return Response.json({ message: { role: 'assistant', content: next } })
+    const message = typeof next === 'string' ? { content: next } : next
+    return Response.json({ message: { role: 'assistant', ...message }, done: true })
   })
   vi.stubGlobal('fetch', fetch)
   return fetch
@@ -20,7 +29,11 @@ function ollamaReplies(...replies: (string | Error)[]) {
 
 function requestBody(fetch: ReturnType<typeof ollamaReplies>, call = 0) {
   const [, init] = fetch.mock.calls[call]
-  return JSON.parse(String(init?.body)) as { model: string; messages: { role: string; content: string }[] }
+  return JSON.parse(String(init?.body)) as {
+    model: string
+    messages: { role: string; content: string; tool_name?: string }[]
+    tools?: { function: { name: string } }[]
+  }
 }
 
 async function seed() {
@@ -44,6 +57,7 @@ describe('conversation', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
+    vi.mocked(validateMermaid).mockReset().mockResolvedValue(null)
   })
 
   it('stores the user message, asks the provider with the GraphiteAI system prompt, and stores the reply', async () => {
@@ -171,5 +185,57 @@ describe('conversation', () => {
     await reply(chatSessionId)
 
     expect(fetch).toHaveBeenCalledOnce()
+  })
+
+  it('checks the diagrams in a reply with Mermaid and has the agent fix them before the user sees them', async () => {
+    const { chatSessionId } = await seed()
+    vi.mocked(validateMermaid).mockImplementation(async (source) =>
+      source.includes('-->') ? 'Parse error on line 2: A -->' : null,
+    )
+    const fetch = ollamaReplies(
+      mermaid('Domain model', 'classDiagram\n  A -->'),
+      mermaid('Domain model', 'classDiagram\n  A <|-- B'),
+    )
+
+    await sendMessage(chatSessionId, 'Model a library')
+
+    const [diagram] = await db.diagrams.toArray()
+    expect(diagram.source).toContain('A <|-- B')
+    expect(requestBody(fetch, 1).messages.at(-1)).toMatchObject({
+      role: 'user',
+      content: expect.stringContaining('Parse error on line 2'),
+    })
+    const [, agentMessage] = await messages(chatSessionId)
+    expect(agentMessage.parts).toEqual([{ type: 'diagram-reference', diagramId: diagram.id }])
+    expect(agentMessage.steps).toEqual([{ kind: 'check', text: expect.stringContaining('Parse error') }])
+  })
+
+  it('lets the agent use its tools before answering, and keeps a record of its work', async () => {
+    const { projectId, chatSessionId } = await seed()
+    await db.diagrams.add({ projectId, type: 'class', name: 'Domain model', source: 'classDiagram\n  class Book' })
+    const fetch = ollamaReplies(toolCall('read_diagram', { title: 'Domain model' }), 'It has a Book class.')
+
+    await sendMessage(chatSessionId, 'What is in the domain model?')
+
+    expect(requestBody(fetch, 0).tools?.map((t) => t.function.name)).toEqual([
+      'check_diagram',
+      'list_diagrams',
+      'read_diagram',
+    ])
+    expect(requestBody(fetch, 1).messages.at(-1)).toEqual({
+      role: 'tool',
+      tool_name: 'read_diagram',
+      content: 'classDiagram\n  class Book',
+    })
+    const [, agentMessage] = await messages(chatSessionId)
+    expect(agentMessage.parts).toEqual([{ type: 'text', content: 'It has a Book class.' }])
+    expect(agentMessage.steps).toEqual([
+      {
+        kind: 'tool',
+        name: 'read_diagram',
+        args: { title: 'Domain model' },
+        result: 'classDiagram\n  class Book',
+      },
+    ])
   })
 })

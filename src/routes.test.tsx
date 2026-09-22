@@ -171,6 +171,26 @@ describe('routes', () => {
       await vi.waitFor(() => expect(screen.queryByRole('status')).toBeNull())
     })
 
+    it('keeps a record of the agent’s work with the reply', async () => {
+      const { projectId, chatSessionId } = await seedChat()
+      await db.diagrams.add({ projectId, type: 'class', name: 'Domain model', source: 'classDiagram' })
+      await seedOllama()
+      const replies = [
+        { content: '', tool_calls: [{ function: { name: 'read_diagram', arguments: { title: 'Domain model' } } }] },
+        { content: 'It has no classes yet.' },
+      ]
+      vi.stubGlobal('fetch', vi.fn(async () => Response.json({ message: replies.shift(), done: true })))
+      renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+
+      await userEvent.type(await screen.findByRole('textbox', { name: /message/i }), 'hi{Enter}')
+
+      await vi.waitFor(() => expect(screen.getAllByRole('article')).toHaveLength(2))
+      const [, reply] = screen.getAllByRole('article')
+      expect(reply).toHaveTextContent('It has no classes yet.')
+      await userEvent.click(within(reply).getByText(/worked through 1 step/i))
+      expect(within(reply).getByText(/read .domain model./i)).toBeVisible()
+    })
+
     it('shows a failed reply with a retry button', async () => {
       const { projectId, chatSessionId } = await seedChat()
       await seedOllama()

@@ -1,4 +1,4 @@
-import type { AiAgent } from './AiAgent.ts'
+import type { AgentProgress, AiAgent } from './AiAgent.ts'
 import { EventEmitter } from './EventEmitter.ts'
 import type { Message } from './Message.ts'
 
@@ -6,6 +6,8 @@ export type ChatSessionEvents = {
   message: Message
   draft: Message | null
   error: unknown
+  /** The agent's reply in the making (work so far and streamed text). */
+  progress: AgentProgress
 }
 
 export class ChatSession extends EventEmitter<ChatSessionEvents> {
@@ -42,5 +44,9 @@ export class ChatSession extends EventEmitter<ChatSessionEvents> {
 
   reportError(error: unknown): void {
     this.emit('error', error)
+  }
+
+  reportProgress(progress: AgentProgress): void {
+    this.emit('progress', progress)
   }
 }

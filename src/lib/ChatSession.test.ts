@@ -2,19 +2,21 @@ import { describe, expect, it, vi } from 'vitest'
 import type { AgenticTool } from './AgenticTool.ts'
 import { AiAgent } from './AiAgent.ts'
 import { ChatSession } from './ChatSession.ts'
-import { LlmModel } from './LlmModel.ts'
+import type { ChatTurn } from './chatTurns.ts'
+import { LlmModel, type ModelStep } from './LlmModel.ts'
 import { Message } from './Message.ts'
 import { MessagePart } from './MessagePart.ts'
 
 class EchoModel extends LlmModel {
-  complete = vi.fn(async (history: Message[], tools: AgenticTool[]) => {
-    const last = history[history.length - 1]
-    return [new MessagePart('text', `echo ${last.contents[0].content} (${history.length} msgs, ${tools.length} tools)`)]
+  step = vi.fn(async (turns: ChatTurn[], tools: AgenticTool[]): Promise<ModelStep> => {
+    const last = turns[turns.length - 1]
+    const content = 'content' in last ? last.content : ''
+    return { text: `echo ${content} (${turns.length} msgs, ${tools.length} tools)`, toolCalls: [] }
   })
 }
 
 class FailingModel extends LlmModel {
-  async complete(): Promise<MessagePart[]> {
+  async step(): Promise<ModelStep> {
     throw new Error('model down')
   }
 }
@@ -92,7 +94,7 @@ describe('AiAgent in a ChatSession', () => {
     // Give a (wrong) reply-to-self a chance to happen.
     await new Promise((resolve) => setTimeout(resolve, 10))
 
-    expect(model.complete).toHaveBeenCalledTimes(1)
+    expect(model.step).toHaveBeenCalledTimes(1)
     expect(session.messages).toHaveLength(2)
   })
 
@@ -104,7 +106,7 @@ describe('AiAgent in a ChatSession', () => {
     session.send(userMessage('hi'))
     await waitForMessages(session, 2)
 
-    expect(model.complete).toHaveBeenCalledWith(expect.any(Array), [tool], '')
+    expect(model.step).toHaveBeenCalledWith(expect.any(Array), [tool], expect.anything())
   })
 
   it('passes its system prompt to the model', async () => {
@@ -116,7 +118,11 @@ describe('AiAgent in a ChatSession', () => {
     session.send(userMessage('hi'))
     await waitForMessages(session, 2)
 
-    expect(model.complete).toHaveBeenCalledWith(expect.any(Array), [], 'Only draw UML.')
+    expect(model.step).toHaveBeenCalledWith(
+      expect.any(Array),
+      [],
+      expect.objectContaining({ systemPrompt: 'Only draw UML.' }),
+    )
   })
 
   it('reports model failures as an error event', async () => {
@@ -139,7 +145,7 @@ describe('AiAgent in a ChatSession', () => {
     session.send(userMessage('hi'))
     await new Promise((resolve) => setTimeout(resolve, 10))
 
-    expect(model.complete).not.toHaveBeenCalled()
+    expect(model.step).not.toHaveBeenCalled()
   })
 
   it('moving an agent to another session detaches it from the first', async () => {
@@ -154,6 +160,6 @@ describe('AiAgent in a ChatSession', () => {
     await waitForMessages(second, 2)
 
     expect(first.messages).toHaveLength(1)
-    expect(model.complete).toHaveBeenCalledOnce()
+    expect(model.step).toHaveBeenCalledOnce()
   })
 })

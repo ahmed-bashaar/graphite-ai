@@ -26,3 +26,16 @@ export async function renderMermaid(source: string): Promise<string> {
     document.getElementById(`d${id}`)?.remove()
   }
 }
+
+/**
+ * Mermaid's error message for `source`, or null if it draws. It runs the same
+ * render the UI does, so the agent sees exactly the error a user would.
+ */
+export async function validateMermaid(source: string): Promise<string | null> {
+  try {
+    await renderMermaid(source)
+    return null
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error)
+  }
+}
