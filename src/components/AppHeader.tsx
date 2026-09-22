@@ -5,7 +5,7 @@ import { SettingsIcon } from './SettingsIcon.tsx'
 /** Top bar for the pages outside a project: brand on the left, settings on the right. */
 export function AppHeader() {
   return (
-    <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-6 py-4 dark:border-zinc-800 dark:bg-zinc-900">
+    <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-4 py-3 sm:px-6 sm:py-4 dark:border-zinc-800 dark:bg-zinc-900">
       <Brand />
       <Link
         to="/settings"

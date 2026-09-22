@@ -64,7 +64,7 @@ function DiagramView({ diagram }: { diagram: DiagramRecord }) {
   }
 
   return (
-    <div className="h-full overflow-auto p-6">
+    <div className="h-full overflow-auto p-4 sm:p-6">
       <div className={`mx-auto grid max-w-6xl gap-4 ${historyOpen ? 'lg:grid-cols-[1fr_16rem]' : ''}`}>
         <figure aria-labelledby={captionId} className="flex min-w-0 flex-col gap-4">
           <div className="flex flex-wrap items-center gap-3">
@@ -152,7 +152,7 @@ function DiagramView({ diagram }: { diagram: DiagramRecord }) {
           )}
           {earlier && comparing && <SourceDiff before={earlier.source} after={diagram.source} />}
 
-          <div className="rounded-2xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="rounded-2xl border border-zinc-200 bg-white p-3 sm:p-6 dark:border-zinc-800 dark:bg-zinc-900">
             <MermaidSvg result={result} source={shown} />
           </div>
         </figure>

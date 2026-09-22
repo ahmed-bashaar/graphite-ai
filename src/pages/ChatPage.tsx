@@ -135,7 +135,7 @@ function Chat({ chatSessionId }: { chatSessionId: number }) {
   return (
     <div className="flex h-full flex-col">
       {session && (
-        <div className="flex h-11 shrink-0 items-center gap-2 border-b border-zinc-100 px-6 dark:border-zinc-900">
+        <div className="flex h-11 shrink-0 items-center gap-2 border-b border-zinc-100 px-4 md:px-6 dark:border-zinc-900">
           <EditableTitle
             value={session.title}
             noun="chat"
@@ -157,7 +157,7 @@ function Chat({ chatSessionId }: { chatSessionId: number }) {
         </div>
       )}
       <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
-        <div ref={content} className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
+        <div ref={content} className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8">
           {messages?.length === 0 && (
             <p className="py-16 text-center text-zinc-500 dark:text-zinc-400">
               Describe the system you want to model and GraphiteAI will draw the UML.
@@ -207,7 +207,7 @@ function Chat({ chatSessionId }: { chatSessionId: number }) {
           event.preventDefault()
           void attach([...event.dataTransfer.files])
         }}
-        className="mx-auto w-full max-w-3xl px-6 pb-6"
+        className="mx-auto w-full max-w-3xl px-4 pb-4 sm:px-6 sm:pb-6"
       >
         <div className="mb-2 flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
           {providers?.length === 0 ? (
@@ -324,7 +324,7 @@ function ChatMessage({ message, projectId }: { message: MessageRecord; projectId
       className={`flex items-start gap-3 ${who === 'user' ? 'flex-row-reverse' : ''}`}
     >
       <Avatar who={who} />
-      <div className={`flex max-w-[80%] min-w-0 flex-col gap-2 rounded-2xl px-4 py-2.5 leading-relaxed ${bubble[who]}`}>
+      <div className={`flex max-w-[88%] min-w-0 flex-col gap-2 rounded-2xl sm:max-w-[80%] px-4 py-2.5 leading-relaxed ${bubble[who]}`}>
         {message.steps && <AgentWork steps={message.steps} />}
         {message.parts.map((part, i) => (
           <Part key={i} part={part} projectId={projectId} who={who} />
@@ -347,7 +347,7 @@ function LiveReply({ progress }: { progress: AgentProgress }) {
   return (
     <article data-sender="agent" aria-busy="true" className="flex items-start gap-3">
       <Avatar who="agent" />
-      <div className={`flex max-w-[80%] min-w-0 flex-col gap-2 rounded-2xl px-4 py-2.5 leading-relaxed ${bubble.agent}`}>
+      <div className={`flex max-w-[88%] min-w-0 flex-col gap-2 rounded-2xl sm:max-w-[80%] px-4 py-2.5 leading-relaxed ${bubble.agent}`}>
         <AgentWork steps={progress.steps} live />
         {parseReply(progress.draft).map((segment, i) =>
           segment.kind === 'diagram' ? (
