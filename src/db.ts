@@ -24,7 +24,8 @@ export interface ChatSessionRecord {
 export type MessagePartRecord =
   | { type: 'text'; content: string }
   | { type: 'code'; content: string; language?: string }
-  | { type: 'diagram-reference'; diagramId: number }
+  /** `versionId` pins the version the message showed; missing on references from before versions were pinned. */
+  | { type: 'diagram-reference'; diagramId: number; versionId?: number }
   /** A file the user attached (see Attachment in src/lib); `data` is base64. */
   | { type: 'attachment'; name: string; mediaType: string; data: string }
 

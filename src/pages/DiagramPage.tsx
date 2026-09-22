@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useId, useState } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { ConfirmDelete } from '../components/ConfirmDelete.tsx'
 import { EditableTitle } from '../components/EditableTitle.tsx'
 import { MermaidSvg } from '../components/MermaidSvg.tsx'
@@ -13,21 +13,23 @@ import { NotFound } from './NotFound.tsx'
 
 export function DiagramPage() {
   const diagramId = Number(useParams().diagramId)
+  // `?version=` opens an earlier version (links from chat messages use it).
+  const requested = Number(useSearchParams()[0].get('version')) || null
   // undefined while loading, null when the diagram doesn't exist.
   const record = useLiveQuery(async () => (await db.diagrams.get(diagramId)) ?? null, [diagramId])
 
   if (record === null) return <NotFound what="Diagram" />
   if (!record) return null
-  return <DiagramView key={record.id} diagram={record} />
+  return <DiagramView key={`${record.id}-${requested}`} diagram={record} initialVersion={requested} />
 }
 
 const button =
   'rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800'
 
-function DiagramView({ diagram }: { diagram: DiagramRecord }) {
+function DiagramView({ diagram, initialVersion }: { diagram: DiagramRecord; initialVersion: number | null }) {
   const [draft, setDraft] = useState<string | null>(null)
-  const [historyOpen, setHistoryOpen] = useState(false)
-  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [historyOpen, setHistoryOpen] = useState(initialVersion !== null)
+  const [selectedId, setSelectedId] = useState<number | null>(initialVersion)
   const [comparing, setComparing] = useState(false)
   const versions = useLiveQuery(
     () => db.diagramVersions.where({ diagramId: diagram.id }).reverse().sortBy('id'),

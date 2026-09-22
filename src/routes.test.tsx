@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderMermaid } from './components/renderMermaid.ts'
@@ -58,6 +58,7 @@ describe('routes', () => {
   beforeEach(async () => {
     await db.delete()
     await db.open()
+    localStorage.clear()
   })
 
   afterEach(() => {
@@ -139,6 +140,51 @@ describe('routes', () => {
       await userEvent.click(await within(sidebar).findByRole('link', { name: /class model/i }))
       await expectPath(router, `/projects/${projectId}/chats/${chatSessionId}`)
       expect(await screen.findByRole('button', { name: /navigation/i })).toHaveAttribute('aria-expanded', 'false')
+    })
+
+    it('collapses and expands the sidebar, remembering the choice', async () => {
+      const projectId = await seedProject()
+      renderAt(`/projects/${projectId}`)
+
+      await userEvent.click(await screen.findByRole('button', { name: /collapse sidebar/i }))
+      const sidebar = screen.getByRole('complementary')
+      expect(sidebar).toHaveAttribute('data-collapsed', 'true')
+      expect(screen.queryByRole('button', { name: /collapse sidebar/i })).toBeNull()
+
+      // Still collapsed after a reload.
+      cleanup()
+      renderAt(`/projects/${projectId}`)
+      expect(await screen.findByRole('complementary')).toHaveAttribute('data-collapsed', 'true')
+      await userEvent.click(screen.getByRole('button', { name: /expand sidebar/i }))
+      expect(screen.getByRole('complementary')).toHaveAttribute('data-collapsed', 'false')
+      expect(screen.queryByRole('button', { name: /expand sidebar/i })).toBeNull()
+    })
+
+    it('resizes the sidebar by dragging or with the keyboard, within limits, remembering the width', async () => {
+      const projectId = await seedProject()
+      renderAt(`/projects/${projectId}`)
+
+      const handle = await screen.findByRole('separator', { name: /resize sidebar/i })
+      expect(handle).toHaveAttribute('aria-valuenow', '256')
+      handle.focus()
+      await userEvent.keyboard('{ArrowRight}{ArrowRight}')
+      expect(handle).toHaveAttribute('aria-valuenow', '288')
+
+      fireEvent.pointerDown(handle, { clientX: 288, pointerId: 1 })
+      fireEvent.pointerMove(window, { clientX: 340, pointerId: 1 })
+      fireEvent.pointerUp(window, { clientX: 340, pointerId: 1 })
+      expect(handle).toHaveAttribute('aria-valuenow', '340')
+      expect(screen.getByRole('complementary').style.getPropertyValue('--sidebar-width')).toBe('340px')
+
+      fireEvent.pointerDown(handle, { clientX: 340, pointerId: 1 })
+      fireEvent.pointerMove(window, { clientX: 5000, pointerId: 1 })
+      fireEvent.pointerUp(window, { clientX: 5000, pointerId: 1 })
+      expect(handle).toHaveAttribute('aria-valuemax', '480')
+      expect(handle).toHaveAttribute('aria-valuenow', '480')
+
+      cleanup()
+      renderAt(`/projects/${projectId}`)
+      expect(await screen.findByRole('separator', { name: /resize sidebar/i })).toHaveAttribute('aria-valuenow', '480')
     })
 
     it('reports a missing project', async () => {
@@ -246,6 +292,48 @@ describe('routes', () => {
       const articles = screen.getAllByRole('article')
       expect(articles).toHaveLength(2)
       expect(articles[1]).toHaveTextContent('Hello, world!')
+    })
+
+    it('shows each message’s diagram as it was then, marking and linking earlier versions', async () => {
+      const { projectId, chatSessionId } = await seedChat()
+      const { diagramId, versionId: v1 } = await createDiagram(
+        { projectId, type: 'class', name: 'Domain', source: 'classDiagram\n  class Book' },
+        'agent',
+      )
+      const v2 = await updateDiagramSource(diagramId, 'classDiagram\n  class Book\n  class Loan', 'agent')
+      const agentMessage = (on: number, pinned?: number) => ({
+        chatSessionId,
+        sender: 'GraphiteAI',
+        on: new Date(on),
+        isSent: true,
+        parts: [{ type: 'diagram-reference' as const, diagramId, ...(pinned && { versionId: pinned }) }],
+      })
+      await db.messages.bulkAdd([agentMessage(1, v1), agentMessage(2, v2), agentMessage(3)])
+      renderAt(`/projects/${projectId}/chats/${chatSessionId}`)
+
+      const [earlier, latest, unpinned] = await screen.findAllByRole('article')
+      expect(await within(earlier).findByTestId('mermaid-svg')).not.toHaveTextContent('class Loan')
+      expect(within(earlier).getByRole('link', { name: /earlier version/i })).toHaveAttribute(
+        'href',
+        `/projects/${projectId}/diagrams/${diagramId}?version=${v1}`,
+      )
+      expect(await within(latest).findByTestId('mermaid-svg')).toHaveTextContent('class Loan')
+      expect(within(latest).queryByText(/earlier version/i)).toBeNull()
+      expect(await within(unpinned).findByTestId('mermaid-svg')).toHaveTextContent('class Loan')
+    })
+
+    it('opens the diagram page on the version a link asks for', async () => {
+      const projectId = await seedProject()
+      const { diagramId, versionId: v1 } = await createDiagram(
+        { projectId, type: 'class', name: 'Domain', source: 'classDiagram\n  class Book' },
+        'agent',
+      )
+      await updateDiagramSource(diagramId, 'classDiagram\n  class Book\n  class Loan', 'agent')
+      renderAt(`/projects/${projectId}/diagrams/${diagramId}?version=${v1}`)
+
+      expect(await screen.findByText(/viewing an earlier version/i)).toBeInTheDocument()
+      expect(screen.getByRole('region', { name: /version history/i })).toBeInTheDocument()
+      await vi.waitFor(() => expect(screen.getByTestId('mermaid-svg')).not.toHaveTextContent('class Loan'))
     })
 
     it('does not draw diagrams while the reply is still being written and checked', async () => {
@@ -431,7 +519,7 @@ describe('routes', () => {
           `/projects/${projectId}/diagrams/${diagramId}`,
         )
         const [message] = await db.messages.toArray()
-        expect(message.parts).toEqual([{ type: 'diagram-reference', diagramId }])
+        expect(message.parts).toEqual([{ type: 'diagram-reference', diagramId, versionId: expect.any(Number) }])
       })
 
       it('attaches images pasted into the message field', async () => {
@@ -510,7 +598,7 @@ describe('routes', () => {
 
       async function seedHistory() {
         const projectId = await seedProject()
-        const diagramId = await createDiagram({ projectId, type: 'class', name: 'Domain', source: v1 }, 'agent')
+        const { diagramId } = await createDiagram({ projectId, type: 'class', name: 'Domain', source: v1 }, 'agent')
         await updateDiagramSource(diagramId, v2, 'user')
         return { projectId, diagramId }
       }

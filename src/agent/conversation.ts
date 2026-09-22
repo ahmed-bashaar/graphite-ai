@@ -2,6 +2,7 @@ import {
   db,
   type ChatSessionRecord,
   type DiagramRecord,
+  type DiagramVersionRecord,
   type MessagePartRecord,
   type MessageRecord,
   type ProviderRecord,
@@ -14,11 +15,13 @@ import {
   DiagramReference,
   Message,
   MessagePart,
+  diagramTypeOf,
   parseReply,
+  retitle,
   type AgentProgress,
   type AgentStep,
 } from '../lib/index.ts'
-import { createDiagram, updateDiagramSource } from '../mutations.ts'
+import { createDiagram, currentVersionId, updateDiagramSource } from '../mutations.ts'
 import { providerKinds } from '../providers.ts'
 import { NEW_CHAT_TITLE, titleFrom } from './chatTitle.ts'
 import { endReply, startReply, updateReply } from './replies.ts'
@@ -43,9 +46,17 @@ export type ContextPart = Extract<MessagePartRecord, { type: 'attachment' | 'dia
  */
 export async function sendMessage(chatSessionId: number, content: string, context: ContextPart[] = []): Promise<void> {
   const text = content.trim()
-  const parts: MessagePartRecord[] = [...(text ? [{ type: 'text' as const, content }] : []), ...context]
-  if (parts.length === 0) return
-  await db.transaction('rw', db.messages, db.chatSessions, db.diagrams, async () => {
+  if (!text && context.length === 0) return
+  await db.transaction('rw', [db.messages, db.chatSessions, db.diagrams, db.diagramVersions], async () => {
+    // A referenced diagram is pinned to its version now, so the message keeps showing what the user meant.
+    const pinned = await Promise.all(
+      context.map(async (part): Promise<MessagePartRecord> => {
+        if (part.type !== 'diagram-reference') return part
+        const versionId = await currentVersionId(part.diagramId)
+        return versionId === undefined ? part : { ...part, versionId }
+      }),
+    )
+    const parts: MessagePartRecord[] = [...(text ? [{ type: 'text' as const, content }] : []), ...pinned]
     await db.messages.add({ chatSessionId, sender: 'user', on: new Date(), isSent: true, parts })
     const session = await db.chatSessions.get(chatSessionId)
     if (session?.title === NEW_CHAT_TITLE) {
@@ -84,7 +95,10 @@ export async function reply(chatSessionId: number): Promise<void> {
   let progress: AgentProgress = { steps: [], draft: '' }
   try {
     const diagrams = await db.diagrams.where({ projectId: session.projectId }).toArray()
-    const history = records.map((record) => toMessage(record, diagrams))
+    const versions = await pinnedVersions(records)
+    const history = records.map((record) => toMessage(record, diagrams, versions))
+    const note = await outsideChangesNote(records, diagrams)
+    if (note) history[history.length - 1].contents.push(new MessagePart('text', note))
 
     // The agent reacts to the session's `message` event rather than being called directly.
     const chat = new ChatSession()
@@ -124,14 +138,57 @@ async function providerFor(session: ChatSessionRecord): Promise<ProviderRecord |
   return chosen ?? (await db.providers.orderBy(':id').first())
 }
 
-function toMessage(record: MessageRecord, diagrams: DiagramRecord[]): Message {
+type DiagramRef = Extract<MessagePartRecord, { type: 'diagram-reference' }>
+
+const diagramRefs = (records: MessageRecord[]) =>
+  records.flatMap((record) => record.parts.filter((part): part is DiagramRef => part.type === 'diagram-reference'))
+
+/** The versions the messages' diagram references are pinned to, by id. */
+async function pinnedVersions(records: MessageRecord[]): Promise<Map<number, DiagramVersionRecord>> {
+  const ids = [...new Set(diagramRefs(records).flatMap((ref) => (ref.versionId === undefined ? [] : [ref.versionId])))]
+  const found = await db.diagramVersions.bulkGet(ids)
+  return new Map(found.flatMap((version) => (version ? [[version.id, version] as const] : [])))
+}
+
+/**
+ * A stored message as the model sees it. A diagram reference shows the
+ * version the message showed (re-titled with the diagram's current name, since
+ * the agent finds diagrams by title); unpinned ones show the current source.
+ */
+function toMessage(record: MessageRecord, diagrams: DiagramRecord[], versions: Map<number, DiagramVersionRecord>): Message {
   const contents = record.parts.flatMap((part): MessagePart[] => {
     if (part.type === 'attachment') return [new Attachment(part)]
     if (part.type !== 'diagram-reference') return [new MessagePart(part.type, part.content)]
     const diagram = diagrams.find((d) => d.id === part.diagramId)
-    return diagram ? [new DiagramReference(new Diagram(diagram.type, diagram.name, diagram.source))] : []
+    if (!diagram) return []
+    const version = part.versionId === undefined ? undefined : versions.get(part.versionId)
+    const source = version ? retitle(version.source, diagram.name) : diagram.source
+    return [new DiagramReference(new Diagram(diagramTypeOf(source), diagram.name, source))]
   })
   return new Message({ sender: record.sender, contents, on: record.on, isSent: record.isSent })
+}
+
+/**
+ * Tells the model about diagrams changed outside the chat (e.g. a source edit)
+ * since they last appeared in it, with their current source. Empty if none.
+ */
+async function outsideChangesNote(records: MessageRecord[], diagrams: DiagramRecord[]): Promise<string> {
+  const lastShown = new Map<number, number | undefined>()
+  for (const ref of diagramRefs(records)) lastShown.set(ref.diagramId, ref.versionId)
+  const notes: string[] = []
+  for (const [diagramId, versionId] of lastShown) {
+    const diagram = diagrams.find((d) => d.id === diagramId)
+    // Unpinned references already showed the current source.
+    if (!diagram || versionId === undefined) continue
+    const newest = await db.diagramVersions.where({ diagramId }).last()
+    if (newest && newest.id !== versionId) {
+      notes.push(
+        `Diagram "${diagram.name}" has changed since it last appeared in this chat. Its current source:\n` +
+          `\`\`\`mermaid\n${diagram.source}\n\`\`\``,
+      )
+    }
+  }
+  return notes.join('\n\n')
 }
 
 /**
@@ -164,10 +221,10 @@ async function saveReply(
           .where({ projectId: session.projectId })
           .filter((d) => sameName(d.name, name))
           .first()
-        const diagramId = existing
-          ? (await updateDiagramSource(existing.id, source, 'agent'), existing.id)
+        const { diagramId, versionId } = existing
+          ? { diagramId: existing.id, versionId: await updateDiagramSource(existing.id, source, 'agent') }
           : await createDiagram({ projectId: session.projectId, type, name, source }, 'agent')
-        parts.push({ type: 'diagram-reference', diagramId })
+        parts.push({ type: 'diagram-reference', diagramId, ...(versionId !== undefined && { versionId }) })
       }
     }
     await db.messages.add({

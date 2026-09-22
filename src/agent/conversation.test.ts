@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { validateMermaid } from '../components/renderMermaid.ts'
 import { db } from '../db.ts'
+import { updateDiagramSource } from '../mutations.ts'
 import { NoProviderError, reply, sendMessage } from './conversation.ts'
 import { replyProgress, stopReply } from './replies.ts'
 import { saveAgentSettings } from './settings.ts'
@@ -93,7 +94,7 @@ describe('conversation', () => {
     const [, agentMessage] = await messages(chatSessionId)
     expect(agentMessage.parts).toEqual([
       { type: 'text', content: 'Here it is:' },
-      { type: 'diagram-reference', diagramId: diagram.id },
+      { type: 'diagram-reference', diagramId: diagram.id, versionId: expect.any(Number) },
       { type: 'text', content: 'Anything else?' },
     ])
   })
@@ -133,6 +134,62 @@ describe('conversation', () => {
       ['agent', false],
       ['agent', true],
     ])
+  })
+
+  it('pins each diagram reference to the version the message showed', async () => {
+    const { chatSessionId } = await seed()
+    ollamaReplies(
+      mermaid('Domain model', 'classDiagram\n  class Book'),
+      mermaid('Domain model', 'classDiagram\n  class Book\n  class Loan'),
+    )
+
+    await sendMessage(chatSessionId, 'Model a library')
+    await sendMessage(chatSessionId, 'Add loans')
+
+    const [diagram] = await db.diagrams.toArray()
+    const [v1, v2] = await db.diagramVersions.where({ diagramId: diagram.id }).sortBy('id')
+    const agentParts = (await messages(chatSessionId)).filter((m) => m.sender === AGENT_NAME).map((m) => m.parts)
+    expect(agentParts).toEqual([
+      [{ type: 'diagram-reference', diagramId: diagram.id, versionId: v1.id }],
+      [{ type: 'diagram-reference', diagramId: diagram.id, versionId: v2.id }],
+    ])
+  })
+
+  it('pins diagrams the user references to their current version', async () => {
+    const { projectId, chatSessionId } = await seed()
+    const diagramId = await db.diagrams.add({ projectId, type: 'class', name: 'Old', source: 'classDiagram' })
+    ollamaReplies('ok')
+
+    await sendMessage(chatSessionId, 'Look', [{ type: 'diagram-reference', diagramId }])
+
+    const [version] = await db.diagramVersions.where({ diagramId }).toArray()
+    const [userMessage] = await messages(chatSessionId)
+    expect(userMessage.parts[1]).toEqual({ type: 'diagram-reference', diagramId, versionId: version.id })
+  })
+
+  it('shows the model each diagram as it was then, under its current name, and notes later outside changes', async () => {
+    const { chatSessionId } = await seed()
+    const fetch = ollamaReplies(mermaid('Domain model', 'classDiagram\n  class Book'), 'Noted.')
+    await sendMessage(chatSessionId, 'Model a library')
+    const [diagram] = await db.diagrams.toArray()
+    // The user edits and renames the diagram outside the chat.
+    await updateDiagramSource(diagram.id, '---\ntitle: Domain model\n---\nclassDiagram\n  class Book\n  class Loan', 'user')
+    await db.diagrams.update(diagram.id, {
+      name: 'Library',
+      source: '---\ntitle: Library\n---\nclassDiagram\n  class Book\n  class Loan',
+    })
+
+    await sendMessage(chatSessionId, 'What changed?')
+
+    const sent = requestBody(fetch, 1).messages
+    expect(sent[2]).toEqual({
+      role: 'assistant',
+      content: '```mermaid\n---\ntitle: Library\n---\nclassDiagram\n  class Book\n```',
+    })
+    expect(sent.at(-1)?.content).toMatch(/^What changed\?/)
+    expect(sent.at(-1)?.content).toContain(
+      'Diagram "Library" has changed since it last appeared in this chat. Its current source:\n```mermaid\n---\ntitle: Library\n---\nclassDiagram\n  class Book\n  class Loan\n```',
+    )
   })
 
   it('keeps other code blocks as code parts', async () => {
@@ -216,12 +273,15 @@ describe('conversation', () => {
       { type: 'text', content: 'Add loans' },
       image,
       notes,
-      { type: 'diagram-reference', diagramId },
+      { type: 'diagram-reference', diagramId, versionId: expect.any(Number) },
     ])
     const [, sent] = requestBody(fetch).messages as { role: string; content: string; images?: string[] }[]
     expect(sent.images).toEqual(['iVBORw0KGgo='])
     expect(sent.content).toContain('Attached file "notes.txt":\n```\nMembers borrow books\n```')
-    expect(sent.content).toContain('Referenced diagram "Domain model":\n```mermaid\nclassDiagram\n  class Book\n```')
+    // Shown under its title (added if missing), as the agent finds diagrams by title.
+    expect(sent.content).toContain(
+      'Referenced diagram "Domain model":\n```mermaid\n---\ntitle: Domain model\n---\nclassDiagram\n  class Book\n```',
+    )
   })
 
   it('names a new chat after the first attachment when the message has no text', async () => {
@@ -277,7 +337,9 @@ describe('conversation', () => {
       content: expect.stringContaining('Parse error on line 2'),
     })
     const [, agentMessage] = await messages(chatSessionId)
-    expect(agentMessage.parts).toEqual([{ type: 'diagram-reference', diagramId: diagram.id }])
+    expect(agentMessage.parts).toEqual([
+      { type: 'diagram-reference', diagramId: diagram.id, versionId: expect.any(Number) },
+    ])
     expect(agentMessage.steps).toEqual([{ kind: 'check', text: expect.stringContaining('Parse error') }])
   })
 
